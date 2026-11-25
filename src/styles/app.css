@@ -2,7 +2,7 @@
 @import './tokens.css';
 
 /* Os tokens do Cartaz vivem em tokens.css (gerado). Aqui só os ligamos ao Tailwind. */
-@theme inline {
+@theme inline reference {
   --color-*: initial;
   --radius-*: initial;
   --shadow-*: initial;
