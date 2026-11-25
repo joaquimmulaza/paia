@@ -10,11 +10,14 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "tokens:sync": "node scripts/tokens-sync.mjs"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
     "react": "18.3",
-    "react-dom": "18.3"
+    "react-dom": "18.3",
+    "tailwindcss": "^4.3.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

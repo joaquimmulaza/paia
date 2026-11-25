@@ -1,0 +1,85 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Os tokens do Cartaz vivem em tokens.css (gerado). Aqui só os ligamos ao Tailwind. */
+@theme inline {
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-on-ink: var(--on-ink);
+  --color-on-ink-muted: var(--on-ink-muted);
+  --color-brand: var(--brand);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-text: var(--brand-text);
+  --color-line-muted: var(--line-muted);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
+  --color-focus-ring: var(--focus-ring);
+  --color-focus-ring-on-ink: var(--focus-ring-on-ink);
+  --color-focus-ring-on-brand: var(--focus-ring-on-brand);
+  --color-overlay: var(--overlay);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-full: var(--radius-full);
+
+  --shadow-hard: var(--shadow-hard);
+  --shadow-hard-brand: var(--shadow-hard-brand);
+  --shadow-hard-sm: var(--shadow-hard-sm);
+  --shadow-hard-hover: var(--shadow-hard-hover);
+  --shadow-hard-brand-hover: var(--shadow-hard-brand-hover);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
+/* Mapeamento das variáveis do shadcn/ui para os tokens do Cartaz. */
+:root {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --primary: var(--ink);
+  --primary-foreground: var(--on-ink);
+  --border: var(--ink);
+  --input: var(--ink);
+  --ring: var(--focus-ring);
+  --destructive: var(--danger);
+  --muted-foreground: var(--ink-muted);
+  --radius: var(--radius-md);
+}
+
+/* Movimento reduzido (brand book): sem transições, sem deslocamentos de hover e de premido. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --press-offset: 0px;
+    --hover-lift: 0px;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+  }
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--paper);
+  color: var(--ink);
+}

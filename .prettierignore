@@ -7,3 +7,5 @@ CLAUDE.md
 supabase/.temp
 src/types/database.ts
 package-lock.json
+design/tokens.json
+src/styles/tokens.css
