@@ -169,6 +169,26 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"store_features": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"ends_at": string | null,"id": string,"is_active": boolean,"note": string | null,"position": number,"source": Database["public"]['Enums']["feature_source"],"starts_at": string | null,"store_id": string,"updated_at": string,"updated_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"ends_at"?: string | null,"id"?: string,"is_active"?: boolean,"note"?: string | null,"position"?: number,"source"?: Database["public"]['Enums']["feature_source"],"starts_at"?: string | null,"store_id": string,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"ends_at"?: string | null,"id"?: string,"is_active"?: boolean,"note"?: string | null,"position"?: number,"source"?: Database["public"]['Enums']["feature_source"],"starts_at"?: string | null,"store_id"?: string,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "store_features_store_id_fkey"
+      columns: ["store_id"]
+isOneToOne: false
+      referencedRelation: "stores"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"stores": {
                   Row: {
                     "category_id": string,"cover_path": string | null,"created_at": string,"decided_at": string | null,"decided_by": string | null,"description": string,"id": string,"logo_path": string | null,"name": string,"owner_id": string,"published_products_count": number,"rating_avg": number | null,"rating_count": number,"slug": string,"status": Database["public"]['Enums']["store_status"],"submitted_at": string | null,"updated_at": string
@@ -201,7 +221,24 @@ isOneToOne: true
             [_ in never]: never
           }
           Functions: {
-            "get_my_profile":
+            "admin_list_store_features":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "ends_at": string,"id": string,"is_active": boolean,"is_live": boolean,"note": string,"position": number,"source": Database["public"]['Enums']["feature_source"],"starts_at": string,"store_id": string,"store_name": string,"store_slug": string,"store_status": Database["public"]['Enums']["store_status"]
+            }[]
+                           },
+"admin_remove_store_feature":
+{ Args: { "p_id": string }; Returns: undefined
+                           },
+"admin_reorder_store_features":
+{ Args: { "p_ids": (string)[] }; Returns: undefined
+                           },
+"admin_save_store_feature":
+{ Args: { "p_ends_at": string,"p_id": string,"p_note": string,"p_position": number,"p_starts_at": string,"p_store_id": string }; Returns: string
+                           },
+"admin_set_store_feature_active":
+{ Args: { "p_active": boolean,"p_id": string }; Returns: undefined
+                           },
+"get_my_profile":
 { Args: Record<PropertyKey, never>; Returns: {
               "affiliation": Database["public"]['Enums']["affiliation"],"class_group": string,"course": string,"curricular_year": string,"full_name": string,"is_admin": boolean,"phone": string,"shift": string
             }[]
@@ -214,6 +251,11 @@ isOneToOne: true
 "get_store":
 { Args: { "p_slug": string }; Returns: {
               "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"product_categories": Json,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string
+            }[]
+                           },
+"list_featured_stores":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string,"source": Database["public"]['Enums']["feature_source"]
             }[]
                            },
 "list_stores":
@@ -231,7 +273,7 @@ isOneToOne: true
                            }
           }
           Enums: {
-            "academic_option_kind": "course"|"curricular_year"|"shift"|"class_group","affiliation": "student"|"teacher"|"staff","moderation_status": "visible"|"hidden","store_status": "draft"|"pending_approval"|"approved"|"rejected"|"suspended"
+            "academic_option_kind": "course"|"curricular_year"|"shift"|"class_group","affiliation": "student"|"teacher"|"staff","feature_source": "admin"|"paid","moderation_status": "visible"|"hidden","store_status": "draft"|"pending_approval"|"approved"|"rejected"|"suspended"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -351,7 +393,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "academic_option_kind": ["course", "curricular_year", "shift", "class_group"],"affiliation": ["student", "teacher", "staff"],"moderation_status": ["visible", "hidden"],"store_status": ["draft", "pending_approval", "approved", "rejected", "suspended"]
+            "academic_option_kind": ["course", "curricular_year", "shift", "class_group"],"affiliation": ["student", "teacher", "staff"],"feature_source": ["admin", "paid"],"moderation_status": ["visible", "hidden"],"store_status": ["draft", "pending_approval", "approved", "rejected", "suspended"]
           }
         }
 } as const
