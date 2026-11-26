@@ -22,13 +22,12 @@ import { cn, focusRing } from '@/lib/utils';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { signUp } from './api';
 import { AuthErrorAlert, errorMessage } from './AuthErrorAlert';
+import { AFFILIATION_LABEL } from './labels';
 import { signUpSchema, type Affiliation, type SignUpFormValues, type SignUpInput } from './schemas';
 
-const AFFILIATION_OPTIONS: ReadonlyArray<{ value: Affiliation; label: string }> = [
-  { value: 'student', label: 'Estudante' },
-  { value: 'teacher', label: 'Professor' },
-  { value: 'staff', label: 'Funcionário ou colaborador' },
-];
+const AFFILIATION_OPTIONS: ReadonlyArray<{ value: Affiliation; label: string }> = (
+  ['student', 'teacher', 'staff'] as const
+).map((value) => ({ value, label: AFFILIATION_LABEL[value] }));
 
 const ACADEMIC_FIELDS = {
   course: { label: 'Curso', maxLength: 80 },

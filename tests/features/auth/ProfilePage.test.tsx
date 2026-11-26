@@ -76,7 +76,7 @@ describe('ProfilePage (K03)', () => {
   });
 
   it('o estudante vê o cartão A minha loja; Quero vender avisa que vem em breve', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.getMyProfile.mockResolvedValue(student);
     mount();
     const shop = await screen.findByRole('region', { name: 'A minha loja' });
@@ -88,7 +88,7 @@ describe('ProfilePage (K03)', () => {
   });
 
   it('Terminar sessão chama signOut local e vai para /entrar', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.getMyProfile.mockResolvedValue(student);
     api.signOut.mockResolvedValue(undefined);
     const { router } = mount();
@@ -99,7 +99,7 @@ describe('ProfilePage (K03)', () => {
   });
 
   it('Terminar sessão em todos os aparelhos chama signOut global', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.getMyProfile.mockResolvedValue(student);
     api.signOut.mockResolvedValue(undefined);
     mount();
@@ -111,7 +111,7 @@ describe('ProfilePage (K03)', () => {
   });
 
   it('se terminar a sessão falhar, mostra o erro e fica no perfil', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.getMyProfile.mockResolvedValue(student);
     api.signOut.mockRejectedValue(new Error('Algo correu mal. Tenta outra vez.'));
     mount();
@@ -121,7 +121,7 @@ describe('ProfilePage (K03)', () => {
   });
 
   it('se o perfil não carregar, mostra a mensagem do erro e permite tentar de novo', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.getMyProfile.mockRejectedValueOnce(new Error('Não encontrámos o que procuras.'));
     api.getMyProfile.mockResolvedValueOnce(student);
     mount();

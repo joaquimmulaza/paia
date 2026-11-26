@@ -79,7 +79,7 @@ describe('Button', () => {
   ])(
     'asChild <a> com %s sai da ordem do Tab e não se ativa com clique nem com Enter',
     async (_, state) => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       const onClick = vi.fn();
       render(
         <Button asChild {...state}>

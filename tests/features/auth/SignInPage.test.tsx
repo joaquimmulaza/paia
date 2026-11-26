@@ -45,7 +45,7 @@ describe('SignInPage (K01)', () => {
   });
 
   it('voltar=//evil.com não sai da aplicação: vai para /perfil', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.signIn.mockResolvedValue(undefined);
     const { router } = mount('/entrar?voltar=%2F%2Fevil.com');
     await signInWith(user);
@@ -54,7 +54,7 @@ describe('SignInPage (K01)', () => {
   });
 
   it('voltar com caminho relativo seguro volta para lá', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.signIn.mockResolvedValue(undefined);
     mount('/entrar?voltar=%2Fpedidos');
     await signInWith(user);
@@ -66,7 +66,7 @@ describe('SignInPage (K01)', () => {
   });
 
   it('palavra-passe errada mostra o erro num alerta acima do botão', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.signIn.mockRejectedValue(new Error('Email ou palavra-passe incorretos.'));
     mount();
     await signInWith(user, 'errada-123');
@@ -77,7 +77,7 @@ describe('SignInPage (K01)', () => {
   });
 
   it('o botão Mostrar revela e volta a esconder a palavra-passe', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     const password = await screen.findByLabelText('Palavra-passe');
     expect(password).toHaveAttribute('type', 'password');

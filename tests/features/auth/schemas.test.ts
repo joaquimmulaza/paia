@@ -102,6 +102,14 @@ describe('signUpSchema', () => {
     });
   });
 
+  it('recusa palavra-passe com mais de 72 caracteres e aceita 72', () => {
+    expect(issues({ ...base, password: 'a'.repeat(73) })).toContainEqual({
+      path: 'password',
+      message: 'No máximo 72 caracteres.',
+    });
+    expect(signUpSchema.safeParse({ ...base, password: 'a'.repeat(72) }).success).toBe(true);
+  });
+
   it('não faz trim à palavra-passe', () => {
     expect(signUpSchema.parse({ ...base, password: '  1234  ' }).password).toBe('  1234  ');
   });

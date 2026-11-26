@@ -61,20 +61,28 @@ As confirmações de email estão desligadas localmente; os emails que a stack e
 
 ### `npm run verify`
 
-Corre estes passos por ordem e pára no primeiro erro:
+Antes do passo 1, confirma que o `.env.local` existe e tem `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (só verifica a presença, nunca mostra os valores). Depois corre estes passos por ordem e pára no primeiro erro:
 
 1. `lint`: ESLint, incluindo as regras de acessibilidade (`jsx-a11y`).
 2. `format:check`: Prettier.
-3. `typecheck`: TypeScript em modo estrito.
-4. `test`: testes unitários e de componentes (Vitest).
-5. `db:reset`: recria a base de dados local a partir das migrações e do `seed.sql`.
-6. `db:test`: testes da base de dados (pgTAP): RLS, permissões e restrições.
-7. `build`: build de produção.
-8. `e2e`: registo, sessão e perfil no navegador, com análise de acessibilidade (axe, WCAG 2.2 AA) em `/entrar`, `/criar-conta` e `/perfil`.
+3. `tokens:sync` + `git diff`: falha se `src/styles/tokens.css` não coincidir com o que `design/tokens.json` gera.
+4. `typecheck`: TypeScript em modo estrito.
+5. `test`: testes unitários e de componentes (Vitest).
+6. `db:reset`: recria a base de dados local a partir das migrações e do `seed.sql`.
+7. `db:types` + `git diff`: falha se `src/types/database.ts` não coincidir com os tipos gerados da base local.
+8. `db:test`: testes da base de dados (pgTAP): RLS, permissões e restrições.
+9. `build`: build de produção.
+10. `e2e`: registo, sessão e perfil no navegador, com análise de acessibilidade (axe, WCAG 2.2 AA) em `/entrar`, `/criar-conta` e `/perfil`.
+
+Os passos 3 e 7 comparam com o último commit: se mudares os tokens ou as migrações, faz commit dos ficheiros gerados.
 
 O `verify` **não** arranca o Supabase. Se a stack local estiver parada, o passo `db:reset` falha com a mensagem da CLI: corre `npm run db:start` primeiro.
 
-O passo `e2e` arranca o `npm run dev` sozinho, ou reaproveita um que já esteja a correr. Cria uma conta nova em cada execução, com um email fictício (`@exemplo.test`).
+O `npm run dev` fixa a porta 5173 (`--strictPort`): se estiver ocupada, falha em vez de usar outra. O passo `e2e` arranca o `npm run dev` sozinho, ou reaproveita um que já esteja a correr. Cria uma conta nova em cada execução, com um email fictício (`@exemplo.test`).
+
+## Contas criadas fora da aplicação
+
+Utilizadores criados no Studio ou no painel do Supabase falham com `TERMS_REQUIRED`, **por desenho**: o trigger exige os metadados do registo (termos, vínculo, etc.). As contas têm de ser criadas pela aplicação.
 
 ## Primeiro administrador
 

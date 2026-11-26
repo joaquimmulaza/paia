@@ -15,7 +15,7 @@ function Entrega() {
 
 describe('RadioGroup', () => {
   it('ArrowDown move o foco e a escolha do primeiro para o segundo', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Entrega />);
     const primeiro = screen.getByRole('radio', { name: 'Entrega na sala' });
     const segundo = screen.getByRole('radio', { name: 'Ponto de encontro' });
@@ -43,7 +43,7 @@ describe('RadioGroup', () => {
   });
 
   it('variant="card" usa o título como nome e a descrição como descrição', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       <RadioGroup aria-label="Modalidade">
         <RadioGroupItem

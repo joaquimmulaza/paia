@@ -19,7 +19,7 @@ export function PlaceholderPage({ active }: { active: PlaceholderTab }) {
   return (
     <PageShell header={<AppHeader logo />} nav={active}>
       <h1 className="m-0 font-display text-display-xl font-bold text-ink uppercase">
-        Catálogo em construção
+        {active === 'inicio' ? 'Catálogo em construção' : 'Em construção'}
       </h1>
     </PageShell>
   );

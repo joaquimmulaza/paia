@@ -39,7 +39,7 @@ beforeEach(() => {
 
 describe('rotas da aplicação', () => {
   it('no perfil (com RequireAuth), terminar sessão acaba em /entrar', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     auth.state = { session: { user: { id: 'u1' } }, loading: false };
     api.getMyProfile.mockResolvedValue(student);
     api.signOut.mockImplementation(async () => {
@@ -63,6 +63,16 @@ describe('rotas da aplicação', () => {
     expect(
       await screen.findByRole('navigation', { name: 'Navegação principal' }),
     ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/', 'Catálogo em construção'],
+    ['/explorar', 'Em construção'],
+    ['/lojas', 'Em construção'],
+    ['/pedidos', 'Em construção'],
+  ])('%s mostra o título «%s»', async (path, title) => {
+    renderRoutes(routes, path);
+    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument();
   });
 
   it.each([

@@ -144,7 +144,6 @@ create table public.academic_info (
     on update restrict
 );
 
-create index academic_info_user_id_affiliation_idx on public.academic_info (user_id, affiliation);
 create index academic_info_course_option_id_idx on public.academic_info (course_option_id);
 create index academic_info_curricular_year_option_id_idx on public.academic_info (curricular_year_option_id);
 create index academic_info_shift_option_id_idx on public.academic_info (shift_option_id);

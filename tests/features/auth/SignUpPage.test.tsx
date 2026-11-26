@@ -73,7 +73,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('escolher Professor esconde a secção Dados académicos', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     await user.click(await screen.findByRole('radio', { name: 'Professor' }));
     expect(screen.queryByRole('group', { name: 'Dados académicos' })).toBeNull();
@@ -94,7 +94,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('estudante sem curso: mensagem junto ao campo, aria-invalid, aria-describedby e foco', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     await screen.findByLabelText('Curso');
     await fillStudent(user, ['Curso']);
@@ -109,7 +109,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('com tudo em branco, o foco vai para o primeiro campo com erro', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     await user.click(await screen.findByRole('button', { name: 'Criar conta' }));
     await waitFor(() => expect(screen.getByLabelText('Nome completo')).toHaveFocus());
@@ -120,7 +120,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('dados válidos chamam signUp uma vez; o segundo clique durante o envio não conta', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const pending = deferred();
     api.signUp.mockReturnValue(pending.promise);
     const { router } = mount();
@@ -153,7 +153,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('professor que preencheu dados académicos antes de mudar não os envia', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.signUp.mockResolvedValue(undefined);
     mount();
     await screen.findByLabelText('Curso');
@@ -169,7 +169,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('erro do servidor aparece num alerta acima do botão, e o botão volta a ficar ativo', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     api.signUp.mockRejectedValue(new Error('Não foi possível criar a conta. Tenta outra vez.'));
     mount();
     await screen.findByLabelText('Curso');
@@ -185,7 +185,7 @@ describe('SignUpPage (K02)', () => {
   });
 
   it('com a palavra-passe curta, «Pelo menos 8 caracteres.» aparece uma só vez', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     await user.type(await screen.findByLabelText('Palavra-passe'), 'curta');
     await user.click(screen.getByRole('button', { name: 'Criar conta' }));

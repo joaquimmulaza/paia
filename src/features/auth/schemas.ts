@@ -41,7 +41,7 @@ const signUpBase = z.object({
     .string()
     .trim()
     .refine((v) => normalizePhone(v) !== null, MSG.phone),
-  password: z.string().min(8, MSG.password),
+  password: z.string().min(8, MSG.password).max(72, 'No máximo 72 caracteres.'),
   affiliation: z.enum(AFFILIATIONS, { error: MSG.affiliation }),
   academic: z.unknown().optional(),
   // boolean + refine (e não literal) para não abortar o objeto e os outros erros aparecerem juntos.

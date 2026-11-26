@@ -67,7 +67,7 @@ function DescricaoTardia() {
 
 describe('Form', () => {
   it('uma descrição que aparece depois da montagem fica ligada ao campo', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<DescricaoTardia />);
     await user.click(screen.getByRole('button', { name: 'Mostrar ajuda' }));
     expect(screen.getByLabelText('Nome')).toHaveAccessibleDescription('Até 40 caracteres.');
@@ -81,7 +81,7 @@ describe('Form', () => {
   });
 
   it('com erro marca o campo e mostra a mensagem com ícone, ligada ao campo', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Telefone />);
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
 

@@ -16,6 +16,7 @@ describe('translateAuthError', () => {
     [{ message: 'Email not confirmed' }, 'Confirma o teu email antes de entrares.'],
     [{ code: 'email_not_confirmed' }, 'Confirma o teu email antes de entrares.'],
     [{ code: 'weak_password' }, 'Pelo menos 8 caracteres.'],
+    [{ code: 'validation_failed' }, 'Algo correu mal. Tenta outra vez.'],
   ])('traduz %j', (err, expected) => {
     expect(translateAuthError(err)).toBe(expected);
   });

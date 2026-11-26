@@ -22,6 +22,8 @@ const AUTH_BY_CODE: Record<string, string> = {
   email_exists: MESSAGES.signUpFailed,
   email_not_confirmed: MESSAGES.emailNotConfirmed,
   weak_password: MESSAGES.weakPassword,
+  // Entrada que o GoTrue recusa (por exemplo, palavra-passe longa demais): sem detalhe técnico.
+  validation_failed: MESSAGES.generic,
 };
 
 const AUTH_BY_MESSAGE: Record<string, string> = {

@@ -9,13 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { getMyProfile, signOut, type MyProfile } from './api';
 import { AuthErrorAlert, errorMessage } from './AuthErrorAlert';
-import type { Affiliation } from './schemas';
-
-const AFFILIATION_LABEL: Record<Affiliation, string> = {
-  student: 'Estudante',
-  teacher: 'Professor',
-  staff: 'Funcionário ou colaborador',
-};
+import { AFFILIATION_LABEL } from './labels';
 
 /** Iniciais do primeiro e do último nome («João Manuel» → «JM»). */
 function initials(fullName: string): string {
