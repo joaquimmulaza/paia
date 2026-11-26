@@ -10,6 +10,8 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
+    // Valores locais fict�cios: o cliente exige as vari�veis, mas os testes nunca falam com a rede.
+    env: { VITE_SUPABASE_URL: 'http://127.0.0.1:55321', VITE_SUPABASE_ANON_KEY: 'test-anon-key' },
     setupFiles: ['./tests/setup.ts'],
   },
 });

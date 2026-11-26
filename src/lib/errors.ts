@@ -7,6 +7,12 @@ export const MESSAGES = {
   notFound: 'Não encontrámos o que procuras.',
   notAllowed: 'Não tens permissão para fazer isto.',
   termsRequired: 'Tens de aceitar os Termos e a Política de privacidade.',
+  invalidPhone: 'Indica um número angolano com 9 algarismos, a começar por 9.',
+  invalidName: 'Escreve o teu nome completo.',
+  academicRequired: 'Preenche os dados académicos.',
+  invalidAcademic: 'Revê os dados académicos.',
+  invalidText: 'Há caracteres que não podemos aceitar.',
+  invalidAffiliation: 'Escolhe o teu vínculo à UGS.',
 } as const;
 
 const AUTH_BY_CODE: Record<string, string> = {
@@ -27,6 +33,12 @@ const DB_BY_CODE: Record<string, string> = {
   NOT_FOUND: MESSAGES.notFound,
   NOT_ALLOWED: MESSAGES.notAllowed,
   TERMS_REQUIRED: MESSAGES.termsRequired,
+  INVALID_PHONE: MESSAGES.invalidPhone,
+  INVALID_NAME: MESSAGES.invalidName,
+  ACADEMIC_REQUIRED: MESSAGES.academicRequired,
+  INVALID_ACADEMIC: MESSAGES.invalidAcademic,
+  INVALID_TEXT: MESSAGES.invalidText,
+  INVALID_AFFILIATION: MESSAGES.invalidAffiliation,
 };
 
 function lookup(table: Record<string, string>, key: string | undefined): string | undefined {
@@ -42,4 +54,9 @@ export function translateAuthError(err: { message?: string; code?: string } | nu
 /** Traduz os códigos de erro levantados pelas funções e triggers da base de dados. */
 export function translateDbError(code: string): string {
   return lookup(DB_BY_CODE, code) ?? MESSAGES.generic;
+}
+
+/** Verdadeiro se o código é um dos que a base de dados levanta (e que `translateDbError` conhece). */
+export function isKnownDbCode(code: string | undefined): code is string {
+  return lookup(DB_BY_CODE, code) !== undefined;
 }

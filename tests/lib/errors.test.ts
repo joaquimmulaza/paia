@@ -57,3 +57,16 @@ describe('translateDbError', () => {
     expect(translateDbError(code)).toBe(expected);
   });
 });
+
+describe('códigos dos triggers de registo', () => {
+  it.each([
+    ['INVALID_PHONE', 'Indica um número angolano com 9 algarismos, a começar por 9.'],
+    ['INVALID_NAME', 'Escreve o teu nome completo.'],
+    ['ACADEMIC_REQUIRED', 'Preenche os dados académicos.'],
+    ['INVALID_ACADEMIC', 'Revê os dados académicos.'],
+    ['INVALID_TEXT', 'Há caracteres que não podemos aceitar.'],
+    ['INVALID_AFFILIATION', 'Escolhe o teu vínculo à UGS.'],
+  ])('translateDbError(%s)', (code, expected) => {
+    expect(translateDbError(code)).toBe(expected);
+  });
+});
