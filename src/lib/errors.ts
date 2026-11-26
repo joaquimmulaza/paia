@@ -2,6 +2,7 @@ export const MESSAGES = {
   generic: 'Algo correu mal. Tenta outra vez.',
   invalidCredentials: 'Email ou palavra-passe errados.',
   signUpFailed: 'Não foi possível criar a conta. Se já tens conta, entra.',
+  signUpDataRejected: 'Não foi possível criar a conta. Revê os dados e tenta outra vez.',
   emailNotConfirmed: 'Confirma o teu email antes de entrares.',
   weakPassword: 'Pelo menos 8 caracteres.',
   notFound: 'Não encontrámos o que procuras.',
@@ -27,6 +28,7 @@ const AUTH_BY_MESSAGE: Record<string, string> = {
   'Invalid login credentials': MESSAGES.invalidCredentials,
   'User already registered': MESSAGES.signUpFailed,
   'Email not confirmed': MESSAGES.emailNotConfirmed,
+  'Database error saving new user': MESSAGES.signUpDataRejected,
 };
 
 const DB_BY_CODE: Record<string, string> = {

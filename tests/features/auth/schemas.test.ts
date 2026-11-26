@@ -44,6 +44,27 @@ describe('signUpSchema', () => {
     ]);
   });
 
+  it('mostra todos os erros de uma vez: termos, telefone e dados académicos', () => {
+    const got = issues({ ...base, termsAccepted: false, phone: '81234', academic: undefined });
+    expect(got).toEqual(
+      expect.arrayContaining([
+        {
+          path: 'termsAccepted',
+          message: 'Tens de aceitar os Termos e a Política de privacidade.',
+        },
+        {
+          path: 'phone',
+          message: 'Indica um número angolano com 9 algarismos, a começar por 9.',
+        },
+        { path: 'academic.course', message: 'Indica o teu curso.' },
+        { path: 'academic.curricularYear', message: 'Indica o teu ano curricular.' },
+        { path: 'academic.shift', message: 'Indica o teu turno.' },
+        { path: 'academic.classGroup', message: 'Indica a tua turma.' },
+      ]),
+    );
+    expect(got).toHaveLength(6);
+  });
+
   it('estudante com campos académicos vazios ou só espaços falha', () => {
     const got = issues({ ...base, academic: { ...academic, course: '   ', shift: '' } });
     expect(got).toContainEqual({ path: 'academic.course', message: 'Indica o teu curso.' });

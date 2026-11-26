@@ -70,3 +70,11 @@ describe('códigos dos triggers de registo', () => {
     expect(translateDbError(code)).toBe(expected);
   });
 });
+
+describe('erro genérico do trigger no registo', () => {
+  it('Database error saving new user tem mensagem própria', () => {
+    expect(translateAuthError({ message: 'Database error saving new user' })).toBe(
+      'Não foi possível criar a conta. Revê os dados e tenta outra vez.',
+    );
+  });
+});

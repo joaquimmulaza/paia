@@ -39,14 +39,13 @@ async function run(
 }
 
 export async function signUp(input: SignUpInput): Promise<void> {
-  const isStudent = input.affiliation === 'student' && input.academic !== undefined;
   const data: Record<string, unknown> = {
     full_name: input.fullName,
     phone: input.phone,
     affiliation: input.affiliation,
     terms_accepted: true,
   };
-  if (isStudent && input.academic) {
+  if (input.affiliation === 'student' && input.academic) {
     data.academic = {
       course: input.academic.course,
       curricular_year: input.academic.curricularYear,

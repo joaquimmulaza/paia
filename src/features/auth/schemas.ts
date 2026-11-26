@@ -37,18 +37,19 @@ export type Academic = z.infer<typeof academicSchema>;
 const signUpBase = z.object({
   fullName: z.string().trim().min(2, MSG.name).max(120, MSG.tooLong),
   email,
-  phone: z.string().trim(),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => normalizePhone(v) !== null, MSG.phone),
   password: z.string().min(8, MSG.password),
-  affiliation: z.enum(AFFILIATIONS, { errorMap: () => ({ message: MSG.affiliation }) }),
+  affiliation: z.enum(AFFILIATIONS, { error: MSG.affiliation }),
   academic: z.unknown().optional(),
-  termsAccepted: z.literal(true, { errorMap: () => ({ message: MSG.terms }) }),
+  // boolean + refine (e não literal) para não abortar o objeto e os outros erros aparecerem juntos.
+  termsAccepted: z.boolean().refine((v): v is true => v === true, MSG.terms),
 });
 
 export const signUpSchema = signUpBase
   .superRefine((value, ctx) => {
-    if (normalizePhone(value.phone) === null) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['phone'], message: MSG.phone });
-    }
     if (value.affiliation !== 'student') return;
     const raw = (
       typeof value.academic === 'object' && value.academic !== null ? value.academic : {}
@@ -61,7 +62,7 @@ export const signUpSchema = signUpBase
     });
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
-        ctx.addIssue({ ...issue, path: ['academic', ...issue.path] });
+        ctx.addIssue({ code: 'custom', message: issue.message, path: ['academic', ...issue.path] });
       }
     }
   })

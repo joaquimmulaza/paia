@@ -76,6 +76,10 @@ describe('signUp', () => {
       'Não foi possível criar a conta. Se já tens conta, entra.',
     );
     auth.signUp.mockResolvedValue({ error: { message: 'Database error saving new user' } });
+    await expect(signUp(student)).rejects.toThrow(
+      'Não foi possível criar a conta. Revê os dados e tenta outra vez.',
+    );
+    auth.signUp.mockResolvedValue({ error: { message: 'boom 10.0.0.1' } });
     await expect(signUp(student)).rejects.toThrow('Algo correu mal. Tenta outra vez.');
   });
 
