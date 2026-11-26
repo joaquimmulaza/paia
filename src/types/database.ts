@@ -205,6 +205,29 @@ isOneToOne: true
 { Args: Record<PropertyKey, never>; Returns: {
               "affiliation": Database["public"]['Enums']["affiliation"],"class_group": string,"course": string,"curricular_year": string,"full_name": string,"is_admin": boolean,"phone": string,"shift": string
             }[]
+                           },
+"get_product":
+{ Args: { "p_id": string }; Returns: {
+              "category_name": string,"category_slug": string,"created_at": string,"description": string,"id": string,"images": Json,"name": string,"price_kz": number,"stock": number,"store_name": string,"store_rating_avg": number,"store_rating_count": number,"store_slug": string
+            }[]
+                           },
+"get_store":
+{ Args: { "p_slug": string }; Returns: {
+              "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"product_categories": Json,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string
+            }[]
+                           },
+"list_stores":
+{ Args: { "p_category_slug"?: string,"p_q"?: string }; Returns: {
+              "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string
+            }[]
+                           },
+"search_key":
+{ Args: { "p": string }; Returns: string
+                           },
+"search_products":
+{ Args: { "p_after_created_at"?: string,"p_after_id"?: string,"p_after_price"?: number,"p_category_slug"?: string,"p_limit"?: number,"p_q"?: string,"p_sort"?: string,"p_store_slug"?: string }; Returns: {
+              "category_slug": string,"created_at": string,"id": string,"main_image_path": string,"name": string,"price_kz": number,"stock": number,"store_name": string,"store_slug": string
+            }[]
                            }
           }
           Enums: {

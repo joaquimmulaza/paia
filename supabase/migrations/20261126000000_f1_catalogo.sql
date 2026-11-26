@@ -168,7 +168,8 @@ create trigger set_updated_at
 
 -- Texto com várias linhas (descrições):
 --   * retira os mesmos caracteres invisíveis de normalize_text;
---   * \r\n passa a \n;
+--   * \r\n e os separadores Unicode de linha e de parágrafo (U+2028, U+2029)
+--     passam a \n;
 --   * em cada linha, colapsa espaços, tabs e espaços Unicode num só espaço e
 --     faz btrim;
 --   * 3 ou mais quebras seguidas passam a 2 (uma linha em branco);
@@ -186,7 +187,7 @@ as $$
       regexp_replace(
         regexp_replace(
           replace(
-            regexp_replace(p, '[​-‏‪-‮⁦-⁩﻿⁠­؜᠎]', '', 'g'),
+            translate(regexp_replace(p, '[​-‏‪-‮⁦-⁩﻿⁠­؜᠎]', '', 'g'), U&'\2028\2029', E'\n\n'),
             E'\r\n', E'\n'
           ),
           '[ \t   -   　]+', ' ', 'g'
@@ -380,3 +381,239 @@ grant select (id, product_id, path, position) on public.product_images to anon, 
 grant select, insert, update, delete
   on public.categories, public.stores, public.products, public.product_images
   to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 9. Pesquisa e páginas públicas do catálogo.
+--    * Todas são SECURITY INVOKER: correm com o papel de quem chama, por isso
+--      as RLS e os grants por coluna aplicam-se. Usam só colunas concedidas e
+--      não voltam a filtrar por is_published, moderation_status nem status
+--      (anon nem sequer os pode ler): a visibilidade é das RLS.
+--    * Não tocam no esquema private (anon e authenticated não têm USAGE
+--      nele). A chave de pesquisa vive em public.search_key.
+--    * Erros de entrada: P0001 com INVALID_SORT ou INVALID_CURSOR.
+-- ---------------------------------------------------------------------------
+create extension if not exists unaccent with schema extensions;
+
+-- Chave de pesquisa: sem acentos, minúsculas e sem espaços nas pontas.
+-- Usa o dicionário qualificado para não depender do search_path. É
+-- IMMUTABLE por decisão: o dicionário unaccent não muda em produção.
+create function public.search_key(p text)
+returns text
+language sql
+immutable
+parallel safe
+set search_path = ''
+as $$
+  select lower(extensions.unaccent('extensions.unaccent'::regdictionary, btrim(coalesce(p, ''))));
+$$;
+revoke execute on function public.search_key(text) from public;
+grant execute on function public.search_key(text) to anon, authenticated;
+
+-- Não é preciso grant em extensions.unaccent: no Supabase a extensão é
+-- criada pelo supabase_admin, a quem o revoke global de F0 (do postgres) não
+-- se aplica, e anon e authenticated já têm USAGE em extensions. Os testes
+-- de pesquisa como anon confirmam-no.
+
+-- Pesquisa de produtos com filtros, três ordens e paginação por cursor.
+-- * A consulta é texto fixo (nada vindo do cliente entra no texto) e corre
+--   com EXECUTE … USING: cada chamada é planeada com os valores reais, por
+--   isso os filtros opcionais não impedem o uso dos índices de cursor. Os
+--   valores do cliente entram só como parâmetros ($1…$9).
+-- * Sem cursor, o limite é o extremo da ordem (infinity, uuid máximo, …), o
+--   que mantém a mesma forma de predicado em todas as páginas.
+-- * p_q é cortado a 80 caracteres; a correspondência é position(), por isso
+--   %, _, \, vírgulas e parênteses são texto.
+create function public.search_products(
+  p_q text default null,
+  p_category_slug text default null,
+  p_store_slug text default null,
+  p_sort text default 'recentes',
+  p_after_created_at timestamptz default null,
+  p_after_price integer default null,
+  p_after_id uuid default null,
+  p_limit integer default 20
+)
+returns table (
+  id uuid,
+  name text,
+  price_kz integer,
+  stock integer,
+  created_at timestamptz,
+  store_name text,
+  store_slug text,
+  category_slug text,
+  main_image_path text
+)
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_sort text := coalesce(p_sort, 'recentes');
+  v_q text := public.search_key(left(p_q, 80));
+  v_limit integer := greatest(1, least(coalesce(p_limit, 20), 50));
+  v_min_id constant uuid := '00000000-0000-0000-0000-000000000000';
+  v_max_id constant uuid := 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  v_cursor text;
+  v_order text;
+begin
+  if v_sort = 'recentes' then
+    if (p_after_created_at is null) <> (p_after_id is null) then
+      raise exception using errcode = 'P0001', message = 'INVALID_CURSOR';
+    end if;
+    v_cursor := $c$(p.created_at, p.id) < (coalesce($5, 'infinity'::timestamptz), coalesce($7, $9))$c$;
+    v_order := 'p.created_at desc, p.id desc';
+  elsif v_sort = 'preco-asc' then
+    if (p_after_price is null) <> (p_after_id is null) then
+      raise exception using errcode = 'P0001', message = 'INVALID_CURSOR';
+    end if;
+    v_cursor := '(p.price_kz, p.id) > (coalesce($6, 0), coalesce($7, $8))';
+    v_order := 'p.price_kz asc, p.id asc';
+  elsif v_sort = 'preco-desc' then
+    if (p_after_price is null) <> (p_after_id is null) then
+      raise exception using errcode = 'P0001', message = 'INVALID_CURSOR';
+    end if;
+    v_cursor := '(p.price_kz, p.id) < (coalesce($6, 2147483647), coalesce($7, $9))';
+    v_order := 'p.price_kz desc, p.id desc';
+  else
+    raise exception using errcode = 'P0001', message = 'INVALID_SORT';
+  end if;
+
+  return query execute
+    $q$select p.id, p.name, p.price_kz, p.stock, p.created_at, s.name, s.slug, c.slug,
+              (select i.path from public.product_images i where i.product_id = p.id and i.position = 0)
+         from public.products p
+         join public.stores s on s.id = p.store_id
+         left join public.categories c on c.id = p.category_id
+        where $q$ || v_cursor || $q$
+          and ($2::text is null or p.category_id = (select c2.id from public.categories c2 where c2.slug = $2))
+          and ($3::text is null or p.store_id = (select s2.id from public.stores s2 where s2.slug = $3))
+          and ($1 = '' or position($1 in public.search_key(p.name)) > 0)
+        order by $q$ || v_order || $q$
+        limit $4$q$
+    using v_q, p_category_slug, p_store_slug, v_limit,
+          p_after_created_at, p_after_price, p_after_id, v_min_id, v_max_id;
+end;
+$$;
+revoke execute on function public.search_products(text, text, text, text, timestamptz, integer, uuid, integer) from public;
+grant execute on function public.search_products(text, text, text, text, timestamptz, integer, uuid, integer)
+  to anon, authenticated;
+
+-- Página de um produto. Um produto que as RLS escondem devolve 0 linhas.
+create function public.get_product(p_id uuid)
+returns table (
+  id uuid,
+  name text,
+  description text,
+  price_kz integer,
+  stock integer,
+  created_at timestamptz,
+  category_name text,
+  category_slug text,
+  store_name text,
+  store_slug text,
+  store_rating_avg numeric,
+  store_rating_count integer,
+  images jsonb
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select p.id, p.name, p.description, p.price_kz, p.stock, p.created_at,
+         c.name, c.slug, s.name, s.slug, s.rating_avg, s.rating_count,
+         coalesce(
+           (select jsonb_agg(jsonb_build_object('path', i.path, 'position', i.position) order by i.position)
+              from public.product_images i
+             where i.product_id = p.id),
+           '[]'::jsonb)
+    from public.products p
+    join public.stores s on s.id = p.store_id
+    left join public.categories c on c.id = p.category_id
+   where p.id = p_id;
+$$;
+revoke execute on function public.get_product(uuid) from public;
+grant execute on function public.get_product(uuid) to anon, authenticated;
+
+-- Lista de lojas aprovadas (as RLS escondem as outras), no máximo 50.
+create function public.list_stores(p_q text default null, p_category_slug text default null)
+returns table (
+  id uuid,
+  name text,
+  slug text,
+  description text,
+  category_name text,
+  category_slug text,
+  logo_path text,
+  published_products_count integer,
+  rating_avg numeric,
+  rating_count integer
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select s.id, s.name, s.slug, s.description, c.name, c.slug, s.logo_path,
+         s.published_products_count, s.rating_avg, s.rating_count
+    from public.stores s
+    left join public.categories c on c.id = s.category_id
+   where (p_category_slug is null or c.slug = p_category_slug)
+     and (public.search_key(left(p_q, 80)) = ''
+          or position(public.search_key(left(p_q, 80)) in public.search_key(s.name)) > 0)
+   order by s.published_products_count desc, s.name asc, s.id asc
+   limit 50;
+$$;
+revoke execute on function public.list_stores(text, text) from public;
+grant execute on function public.list_stores(text, text) to anon, authenticated;
+
+-- Página de uma loja: as colunas de list_stores e as categorias dos seus
+-- produtos visíveis (para os filtros de C04), pela ordem das categorias.
+create function public.get_store(p_slug text)
+returns table (
+  id uuid,
+  name text,
+  slug text,
+  description text,
+  category_name text,
+  category_slug text,
+  logo_path text,
+  published_products_count integer,
+  rating_avg numeric,
+  rating_count integer,
+  product_categories jsonb
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select s.id, s.name, s.slug, s.description, c.name, c.slug, s.logo_path,
+         s.published_products_count, s.rating_avg, s.rating_count,
+         coalesce(
+           (select jsonb_agg(jsonb_build_object('name', pc.name, 'slug', pc.slug) order by pc.position, pc.name)
+              from public.categories pc
+             where exists (select 1 from public.products p where p.store_id = s.id and p.category_id = pc.id)),
+           '[]'::jsonb)
+    from public.stores s
+    left join public.categories c on c.id = s.category_id
+   where s.slug = p_slug;
+$$;
+revoke execute on function public.get_store(text) from public;
+grant execute on function public.get_store(text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 10. Storage: buckets públicos de leitura, 2 MB, só JPEG, PNG e WebP. Sem
+--     políticas de escrita: as do dono ficam para F2.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values
+  ('store-media', 'store-media', true, 2097152, '{image/jpeg,image/png,image/webp}'),
+  ('product-media', 'product-media', true, 2097152, '{image/jpeg,image/png,image/webp}')
+on conflict (id) do update
+  set name = excluded.name,
+      public = excluded.public,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
