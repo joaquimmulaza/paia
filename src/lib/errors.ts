@@ -17,6 +17,7 @@ export const MESSAGES = {
   storeNotApproved: 'Esta loja não está aprovada.',
   invalidPeriod: 'A data de fim tem de ser depois da data de início.',
   featureExists: 'Esta loja já está em destaque.',
+  invalidPosition: 'A ordem tem de ser 0 ou mais.',
   invalidCursor: 'Não foi possível carregar mais resultados. Tenta outra vez.',
 } as const;
 
@@ -50,6 +51,7 @@ const DB_BY_CODE: Record<string, string> = {
   STORE_NOT_APPROVED: MESSAGES.storeNotApproved,
   INVALID_PERIOD: MESSAGES.invalidPeriod,
   FEATURE_EXISTS: MESSAGES.featureExists,
+  INVALID_POSITION: MESSAGES.invalidPosition,
   INVALID_CURSOR: MESSAGES.invalidCursor,
 };
 

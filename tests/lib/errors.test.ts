@@ -77,6 +77,7 @@ describe('códigos do catálogo e dos destaques', () => {
     ['STORE_NOT_APPROVED', 'Esta loja não está aprovada.'],
     ['INVALID_PERIOD', 'A data de fim tem de ser depois da data de início.'],
     ['FEATURE_EXISTS', 'Esta loja já está em destaque.'],
+    ['INVALID_POSITION', 'A ordem tem de ser 0 ou mais.'],
     ['INVALID_CURSOR', 'Não foi possível carregar mais resultados. Tenta outra vez.'],
   ])('translateDbError(%s)', (code, expected) => {
     expect(translateDbError(code)).toBe(expected);
