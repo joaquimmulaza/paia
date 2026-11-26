@@ -2,7 +2,8 @@
 -- O cliente usa só a chave anon e é tratado como hostil. A leitura pública
 -- faz-se nas próprias tabelas, com RLS para anon e authenticated e grant de
 -- SELECT coluna a coluna. Nesta fase não há escrita pelo cliente: só o
--- service_role (servidor) e as migrações escrevem.
+-- service_role (servidor) e as migrações escrevem. O esquema private
+-- continua fechado a anon e authenticated.
 
 -- ---------------------------------------------------------------------------
 -- 1. Tipos.
@@ -12,7 +13,10 @@ create type public.moderation_status as enum ('visible', 'hidden');
 
 -- ---------------------------------------------------------------------------
 -- 2. Tabelas. Os textos livres são normalizados por trigger e os CHECKs são a
---    última barreira, como em F0.
+--    última barreira, como em F0. Os nomes ficam numa só linha; as descrições
+--    guardam quebras de linha (\n, no máximo uma linha em branco seguida).
+--    Os caminhos de ficheiros são relativos ao bucket: minúsculas, dígitos,
+--    «/», «_», «.» e «-», sem «..».
 -- ---------------------------------------------------------------------------
 create table public.categories (
   id uuid primary key default gen_random_uuid(),
@@ -21,12 +25,15 @@ create table public.categories (
       name = btrim(name) and name ~ '[^[:space:]]' and name !~ '[[:cntrl:]]'
       and char_length(name) between 1 and 40
     ),
-  slug text not null unique check (slug ~ '^[a-z0-9-]{2,40}$'),
+  slug text not null unique
+    check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and char_length(slug) between 2 and 40),
   position integer not null default 0 check (position >= 0),
   is_visible boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create unique index categories_lower_name_key on public.categories (lower(name));
 
 create table public.stores (
   id uuid primary key default gen_random_uuid(),
@@ -37,22 +44,34 @@ create table public.stores (
       name = btrim(name) and name ~ '[^[:space:]]' and name !~ '[[:cntrl:]]'
       and char_length(name) between 1 and 60
     ),
-  slug text not null unique check (slug ~ '^[a-z0-9-]{3,40}$'),
+  slug text not null unique
+    check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and char_length(slug) between 3 and 40),
   description text not null default ''
-    check (description = btrim(description) and description !~ '[[:cntrl:]]' and char_length(description) <= 280),
+    check (
+      description = btrim(description, E' \n')
+      and translate(description, E'\n', '') !~ '[[:cntrl:]]'
+      and description !~ E'\n\n\n'
+      and char_length(description) <= 280
+    ),
   category_id uuid not null references public.categories (id) on delete restrict,
-  logo_path text null check (char_length(logo_path) <= 200),
-  cover_path text null check (char_length(cover_path) <= 200),
+  logo_path text null
+    check (char_length(logo_path) <= 200 and logo_path ~ '^[a-z0-9][a-z0-9/_.-]*$' and strpos(logo_path, '..') = 0),
+  cover_path text null
+    check (char_length(cover_path) <= 200 and cover_path ~ '^[a-z0-9][a-z0-9/_.-]*$' and strpos(cover_path, '..') = 0),
   status public.store_status not null default 'draft',
   submitted_at timestamptz null,
   decided_at timestamptz null,
   decided_by uuid null references auth.users (id) on delete restrict,
-  rating_avg numeric(2, 1) null,
+  rating_avg numeric(2, 1) null check (rating_avg is null or rating_avg between 1 and 5),
   rating_count integer not null default 0 check (rating_count >= 0),
   -- Mantido só por private.recalc_store_counters (recontagem, nunca incremento).
   published_products_count integer not null default 0 check (published_products_count >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  -- Há média se e só se há avaliações.
+  constraint stores_rating_consistent check ((rating_count = 0) = (rating_avg is null)),
+  -- Fora de draft, a loja foi submetida.
+  constraint stores_submission_recorded check (status = 'draft' or submitted_at is not null),
   -- Uma decisão da administração tem sempre data e autor.
   constraint stores_decision_recorded check (
     status not in ('approved', 'rejected', 'suspended')
@@ -62,6 +81,7 @@ create table public.stores (
 
 create table public.products (
   id uuid primary key default gen_random_uuid(),
+  -- Imutável (trigger prevent_product_store_change).
   store_id uuid not null references public.stores (id) on delete restrict,
   category_id uuid not null references public.categories (id) on delete restrict,
   name text not null
@@ -70,22 +90,35 @@ create table public.products (
       and char_length(name) between 1 and 80
     ),
   description text not null default ''
-    check (description = btrim(description) and description !~ '[[:cntrl:]]' and char_length(description) <= 1000),
+    check (
+      description = btrim(description, E' \n')
+      and translate(description, E'\n', '') !~ '[[:cntrl:]]'
+      and description !~ E'\n\n\n'
+      and char_length(description) <= 1000
+    ),
   -- Kz inteiros.
   price_kz integer not null check (price_kz > 0 and price_kz <= 10000000),
   stock integer not null check (stock >= 0 and stock <= 9999),
   is_published boolean not null default false,
   moderation_status public.moderation_status not null default 'visible',
-  moderation_reason text null check (char_length(moderation_reason) <= 280),
+  moderation_reason text null
+    check (
+      moderation_reason = btrim(moderation_reason) and moderation_reason ~ '[^[:space:]]'
+      and moderation_reason !~ '[[:cntrl:]]' and char_length(moderation_reason) <= 280
+    ),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Um produto oculto tem sempre motivo; um visível nunca tem.
+  constraint products_moderation_reason_consistent
+    check ((moderation_status = 'hidden') = (moderation_reason is not null))
 );
 
 -- No máximo 5 imagens por produto: posições 0–4, uma imagem por posição.
 create table public.product_images (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references public.products (id) on delete cascade,
-  path text not null check (char_length(path) <= 200),
+  path text not null
+    check (char_length(path) <= 200 and path ~ '^[a-z0-9][a-z0-9/_.-]*$' and strpos(path, '..') = 0),
   position smallint not null check (position between 0 and 4),
   unique (product_id, position)
 );
@@ -93,14 +126,15 @@ create table public.product_images (
 -- ---------------------------------------------------------------------------
 -- 3. Índices. Cada FK tem um índice cuja primeira coluna é a da FK:
 --    stores.owner_id (unique), stores.category_id, stores.decided_by,
---    products.store_id e products.category_id (compostos abaixo) e
+--    products.store_id e products.category_id (índices de cursor abaixo) e
 --    product_images.product_id (unique (product_id, position)).
+--    Os índices de produtos servem a paginação por cursor (created_at, id).
 -- ---------------------------------------------------------------------------
 create index stores_category_id_idx on public.stores (category_id);
 create index stores_decided_by_idx on public.stores (decided_by);
 create index stores_status_idx on public.stores (status);
-create index products_store_id_created_at_idx on public.products (store_id, created_at desc);
-create index products_category_id_created_at_idx on public.products (category_id, created_at desc);
+create index products_store_id_created_at_id_idx on public.products (store_id, created_at desc, id desc);
+create index products_category_id_created_at_id_idx on public.products (category_id, created_at desc, id desc);
 create index products_created_at_id_idx on public.products (created_at desc, id desc);
 
 -- ---------------------------------------------------------------------------
@@ -118,8 +152,7 @@ insert into public.categories (name, slug, position) values
   ('Outros', 'outros', 7);
 
 -- ---------------------------------------------------------------------------
--- 5. updated_at e normalização de texto livre. A função de F0 é redefinida
---    para cobrir também stores e products; os ramos de F0 ficam iguais.
+-- 5. updated_at e normalização de texto livre.
 -- ---------------------------------------------------------------------------
 create trigger set_updated_at
   before update on public.categories
@@ -133,6 +166,42 @@ create trigger set_updated_at
   before update on public.products
   for each row execute function private.set_updated_at();
 
+-- Texto com várias linhas (descrições):
+--   * retira os mesmos caracteres invisíveis de normalize_text;
+--   * \r\n passa a \n;
+--   * em cada linha, colapsa espaços, tabs e espaços Unicode num só espaço e
+--     faz btrim;
+--   * 3 ou mais quebras seguidas passam a 2 (uma linha em branco);
+--   * tira espaços e quebras nas pontas.
+-- Outros caracteres de controlo (incluindo um \r solto) ficam e são
+-- recusados pelo trigger e pelos CHECKs. Devolve nulo para nulo.
+create function private.normalize_multiline(p text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select btrim(
+    regexp_replace(
+      regexp_replace(
+        regexp_replace(
+          replace(
+            regexp_replace(p, '[​-‏‪-‮⁦-⁩﻿⁠­؜᠎]', '', 'g'),
+            E'\r\n', E'\n'
+          ),
+          '[ \t   -   　]+', ' ', 'g'
+        ),
+        ' ?\n ?', E'\n', 'g'
+      ),
+      '\n{3,}', E'\n\n', 'g'
+    ),
+    E' \n'
+  );
+$$;
+revoke execute on function private.normalize_multiline(text) from public, anon, authenticated;
+
+-- A função de F0 é redefinida para cobrir também stores e products; os ramos
+-- de F0 ficam iguais.
 create or replace function private.normalize_text_fields()
 returns trigger
 language plpgsql
@@ -154,10 +223,18 @@ begin
        or new.shift ~ '[[:cntrl:]]' or new.class_group ~ '[[:cntrl:]]' then
       raise exception using errcode = '23514', message = 'INVALID_TEXT';
     end if;
-  elsif tg_table_name in ('stores', 'products') then
+  elsif tg_table_name = 'stores' then
     new.name := private.normalize_text(new.name);
-    new.description := private.normalize_text(new.description);
-    if new.name ~ '[[:cntrl:]]' or new.description ~ '[[:cntrl:]]' then
+    new.description := private.normalize_multiline(new.description);
+    if new.name ~ '[[:cntrl:]]' or translate(new.description, E'\n', '') ~ '[[:cntrl:]]' then
+      raise exception using errcode = '23514', message = 'INVALID_TEXT';
+    end if;
+  elsif tg_table_name = 'products' then
+    new.name := private.normalize_text(new.name);
+    new.description := private.normalize_multiline(new.description);
+    new.moderation_reason := private.normalize_text(new.moderation_reason);
+    if new.name ~ '[[:cntrl:]]' or translate(new.description, E'\n', '') ~ '[[:cntrl:]]'
+       or new.moderation_reason ~ '[[:cntrl:]]' then
       raise exception using errcode = '23514', message = 'INVALID_TEXT';
     end if;
   end if;
@@ -174,11 +251,35 @@ create trigger normalize_text_fields
   before insert or update on public.products
   for each row execute function private.normalize_text_fields();
 
+-- Um produto nunca muda de loja (para todos os papéis): simplifica o
+-- contador e o histórico de pedidos.
+create function private.prevent_product_store_change()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.store_id is distinct from old.store_id then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.prevent_product_store_change() from public, anon, authenticated;
+
+create trigger prevent_product_store_change
+  before update of store_id on public.products
+  for each row execute function private.prevent_product_store_change();
+
 -- ---------------------------------------------------------------------------
--- 6. Contador de produtos públicos por loja. Recontagem, nunca incremento,
---    para não derivar. A linha da loja é bloqueada antes de contar: em READ
---    COMMITTED cada instrução plpgsql tem um snapshot novo, por isso a
---    contagem feita depois do bloqueio vê os produtos de quem o tinha antes.
+-- 6. Contador de produtos públicos por loja. Recontagem, nunca incremento.
+--    * Bloqueia a linha da loja com FOR NO KEY UPDATE antes de contar. Não
+--      entra em conflito com o KEY SHARE da FK das inserções concorrentes
+--      (FOR UPDATE entraria e poderia dar deadlock), mas serializa os
+--      recálculos da mesma loja. Em READ COMMITTED, a contagem seguinte tem
+--      um snapshot novo e vê o que quem tinha o bloqueio gravou.
+--    * Só escreve quando o valor muda, para não mexer em stores.updated_at
+--      nem correr os triggers da loja sem necessidade.
 -- ---------------------------------------------------------------------------
 create function private.recalc_store_counters(p_store_id uuid)
 returns void
@@ -186,24 +287,28 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_count integer;
 begin
-  perform 1 from public.stores where id = p_store_id for update;
+  perform 1 from public.stores where id = p_store_id for no key update;
+
+  select count(*)::integer into v_count
+    from public.products
+   where store_id = p_store_id
+     and is_published
+     and moderation_status = 'visible';
 
   update public.stores
-     set published_products_count = (
-       select count(*)
-         from public.products
-        where store_id = p_store_id
-          and is_published
-          and moderation_status = 'visible'
-     )
-   where id = p_store_id;
+     set published_products_count = v_count
+   where id = p_store_id
+     and published_products_count is distinct from v_count;
 end;
 $$;
 revoke execute on function private.recalc_store_counters(uuid) from public, anon, authenticated;
 
 -- SECURITY DEFINER para que chamar recalc_store_counters não dependa do papel
--- que escreve (service_role não tem USAGE em private nem EXECUTE nela).
+-- que escreve (o service_role não tem USAGE em private nem EXECUTE nela).
+-- store_id é imutável, por isso basta uma loja por evento.
 create function private.products_recalc_store_counters()
 returns trigger
 language plpgsql
@@ -211,10 +316,9 @@ security definer
 set search_path = ''
 as $$
 begin
-  if tg_op in ('UPDATE', 'DELETE') then
+  if tg_op = 'DELETE' then
     perform private.recalc_store_counters(old.store_id);
-  end if;
-  if tg_op = 'INSERT' or (tg_op = 'UPDATE' and new.store_id is distinct from old.store_id) then
+  else
     perform private.recalc_store_counters(new.store_id);
   end if;
   return null;
@@ -223,56 +327,17 @@ $$;
 revoke execute on function private.products_recalc_store_counters() from public, anon, authenticated;
 
 create trigger recalc_store_counters
-  after insert or update or delete on public.products
+  after insert or delete or update of store_id, is_published, moderation_status on public.products
   for each row execute function private.products_recalc_store_counters();
 
 -- ---------------------------------------------------------------------------
--- 7. Auxiliares das políticas. SECURITY DEFINER: leem stores.status e
---    products.is_published/moderation_status, que anon e authenticated não
---    podem ler. Devolvem só um booleano, igual para «não existe» e «não é
---    público», por isso não revelam nada.
---    anon e authenticated recebem USAGE em private e EXECUTE só nestas duas;
---    as outras funções de private continuam sem EXECUTE para eles.
--- ---------------------------------------------------------------------------
-create function private.is_store_public(p_store_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1 from public.stores where id = p_store_id and status = 'approved'
-  );
-$$;
-
-create function private.is_product_public(p_product_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1
-      from public.products p
-      join public.stores s on s.id = p.store_id
-     where p.id = p_product_id
-       and p.is_published
-       and p.moderation_status = 'visible'
-       and s.status = 'approved'
-  );
-$$;
-
-revoke execute on function private.is_store_public(uuid) from public;
-revoke execute on function private.is_product_public(uuid) from public;
-grant usage on schema private to anon, authenticated;
-grant execute on function private.is_store_public(uuid) to anon, authenticated;
-grant execute on function private.is_product_public(uuid) to anon, authenticated;
-
--- ---------------------------------------------------------------------------
--- 8. RLS. Só políticas de leitura; sem políticas de escrita para anon nem
---    authenticated nesta fase (nem grants).
+-- 7. RLS. Só políticas de leitura; sem políticas de escrita para anon nem
+--    authenticated nesta fase (nem grants). As políticas não usam funções:
+--    a visibilidade de products depende da de stores e a de product_images
+--    da de products, através das RLS dessas tabelas e de colunas concedidas
+--    (stores.id, products.id). As colunas das próprias políticas não
+--    precisam de grant: o Postgres só verifica privilégios de coluna nas
+--    colunas da consulta do utilizador.
 -- ---------------------------------------------------------------------------
 alter table public.categories enable row level security;
 alter table public.stores enable row level security;
@@ -289,14 +354,18 @@ create policy stores_select_approved on public.stores
 
 create policy products_select_public on public.products
   for select to anon, authenticated
-  using ((select private.is_product_public(id)));
+  using (
+    is_published
+    and moderation_status = 'visible'
+    and exists (select 1 from public.stores s where s.id = products.store_id)
+  );
 
 create policy product_images_select_public on public.product_images
   for select to anon, authenticated
-  using ((select private.is_product_public(product_id)));
+  using (exists (select 1 from public.products p where p.id = product_images.product_id));
 
 -- ---------------------------------------------------------------------------
--- 9. Permissões por coluna. owner_id, status, submitted_at, decided_at,
+-- 8. Permissões por coluna. owner_id, status, submitted_at, decided_at,
 --    decided_by, is_published, moderation_* e updated_at ficam de fora.
 -- ---------------------------------------------------------------------------
 grant select (id, name, slug, position) on public.categories to anon, authenticated;
