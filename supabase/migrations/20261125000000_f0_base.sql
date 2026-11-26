@@ -32,8 +32,9 @@ alter default privileges in schema public revoke all on functions from public, a
 
 -- ---------------------------------------------------------------------------
 -- 3. Normalização de texto livre.
---    * retira caracteres invisíveis de largura zero e de controlo bidi
---      (U+200B–U+200F, U+202A–U+202E, U+2066–U+2069);
+--    * retira caracteres invisíveis de largura zero, de formatação e de
+--      controlo bidi (U+200B–U+200F, U+202A–U+202E, U+2066–U+2069, U+FEFF,
+--      U+2060, U+00AD, U+061C, U+180E);
 --    * colapsa qualquer sequência de espaço em branco (incluindo tab, quebras
 --      de linha e U+00A0) num só espaço e faz btrim.
 --    Os caracteres de controlo que restarem são recusados pelo trigger e pelos
@@ -47,7 +48,12 @@ set search_path = ''
 as $$
   select btrim(
     regexp_replace(
-      regexp_replace(p, '[​-‏‪-‮⁦-⁩]', '', 'g'),
+      regexp_replace(
+        p,
+        '[​-‏‪-‮⁦-⁩﻿⁠­؜᠎]',
+        '',
+        'g'
+      ),
       '[[:space:] ]+', ' ', 'g'
     )
   );
@@ -419,6 +425,13 @@ grant update (full_name, phone) on public.profiles to authenticated;
 grant select, update (course, curricular_year, shift, class_group) on public.academic_info to authenticated;
 grant select on public.academic_options to anon, authenticated;
 
+-- service_role (só no servidor, nunca no cliente): privilégios explícitos.
+-- Com auto_expose_new_tables = false nada lhe é dado por omissão, e assim o
+-- ambiente local e o remoto ficam iguais. O service_role passa as RLS.
+grant select, insert, update, delete
+  on public.profiles, public.academic_info, public.academic_options, public.admin_users
+  to service_role;
+
 -- ---------------------------------------------------------------------------
 -- 10. Perfil do próprio, com os dados académicos e o estado de administrador.
 --     Quem não tem perfil recebe 0 linhas.
@@ -452,5 +465,7 @@ as $$
   left join public.academic_info a on a.user_id = p.id
   where p.id = (select auth.uid());
 $$;
+-- Não se dá ao service_role: sem JWT de utilizador, auth.uid() é nulo e a
+-- função devolveria sempre 0 linhas. O servidor lê as tabelas diretamente.
 revoke execute on function public.get_my_profile() from public, anon, authenticated;
 grant execute on function public.get_my_profile() to authenticated;

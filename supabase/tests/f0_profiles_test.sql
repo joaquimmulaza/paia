@@ -5,7 +5,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(57);
+select plan(61);
 
 -- Utilitário de teste: regista um utilizador como o GoTrue faria (insert em
 -- auth.users como postgres), para o trigger on_auth_user_created correr.
@@ -154,6 +154,16 @@ select throws_ok(
   '23503', null,
   'mudar para teacher um estudante com academic_info falha (FK composta)');
 
+select throws_ok(
+  $$ insert into public.academic_info (user_id, course, curricular_year, shift, class_group)
+     values ('22222222-2222-2222-2222-222222222222', 'Direito', '1', 'Tarde', 'B2') $$,
+  '23503', null,
+  'inserir academic_info para um professor falha (FK composta)');
+
+-- service_role: privilégios explícitos (com auto_expose_new_tables = false).
+select ok(has_table_privilege('service_role', 'public.profiles', 'SELECT'),
+  'service_role tem SELECT em profiles');
+
 -- ===========================================================================
 -- Como a utilizadora A (autenticada)
 -- ===========================================================================
@@ -194,11 +204,12 @@ select throws_ok(
   '23514', null, 'como A, update de full_name com um carácter de controlo falha');
 
 -- Normalização no update.
-update public.profiles set full_name = E'  Ana    Bela​  ' where id = '11111111-1111-1111-1111-111111111111';
+update public.profiles set full_name = E'  A\uFEFFna \u00A0  Be\u2060l\u00ADa\u061C\u180E\u200B  '
+ where id = '11111111-1111-1111-1111-111111111111';
 select is(
   (select full_name from public.profiles where id = '11111111-1111-1111-1111-111111111111'),
   'Ana Bela',
-  'como A, o full_name fica normalizado (espaços, NBSP e zero-width)');
+  'como A, o full_name fica normalizado (espaços, NBSP, zero-width, U+FEFF, U+2060, U+00AD, U+061C, U+180E)');
 
 -- (g) Pode mudar o próprio nome.
 select lives_ok(
@@ -334,6 +345,16 @@ select throws_ok(
   'P0001', 'NOT_ALLOWED',
   'com update(user_id) concedido por engano, o trigger recusa com NOT_ALLOWED');
 reset role;
+
+-- O ramo service_role do bypass: o trigger não bloqueia o service_role.
+set local role service_role;
+select lives_ok(
+  $$ update public.profiles set affiliation = 'staff' where id = '22222222-2222-2222-2222-222222222222' $$,
+  'como service_role, update de affiliation não é bloqueado pelo trigger');
+reset role;
+select is(
+  (select affiliation::text from public.profiles where id = '22222222-2222-2222-2222-222222222222'),
+  'staff', 'o update do service_role fica gravado');
 
 select * from finish();
 rollback;
