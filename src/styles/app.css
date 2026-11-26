@@ -45,6 +45,26 @@
   --font-body: var(--font-body);
 }
 
+/* Estilos de texto do brand book (design/tokens.json, «type») usados pelos componentes. */
+@theme {
+  --text-label: 13px;
+  --text-label--line-height: 16px;
+  --text-label--letter-spacing: 0.08em;
+  --text-body: 15px;
+  --text-body--line-height: 22px;
+  --text-caption: 13px;
+  --text-caption--line-height: 18px;
+}
+
+/* Cor do anel de foco segundo o fundo à volta (brand book, «Estados interativos»). */
+[data-surface='ink'] {
+  --ring-color: var(--focus-ring-on-ink);
+}
+
+[data-surface='brand'] {
+  --ring-color: var(--focus-ring-on-brand);
+}
+
 /* Mapeamento das variáveis do shadcn/ui para os tokens do Cartaz. */
 :root {
   --background: var(--paper);

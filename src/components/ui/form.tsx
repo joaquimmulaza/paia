@@ -1,0 +1,163 @@
+// Design system: Campo (p-field, p-field__label, p-field__hint, p-field__error).
+//
+// O registo do shadcn já não serve `form` no estilo radix-nova; este ficheiro segue a API
+// clássica do shadcn/ui (Form, FormField, FormItem, FormLabel, FormControl,
+// FormDescription, FormMessage) sobre react-hook-form.
+import * as React from 'react';
+import { Label as LabelPrimitive, Slot } from 'radix-ui';
+import { CircleAlert } from 'lucide-react';
+import {
+  Controller,
+  FormProvider,
+  useFormContext,
+  useFormState,
+  type ControllerProps,
+  type FieldPath,
+  type FieldValues,
+} from 'react-hook-form';
+import { cn } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
+
+const Form = FormProvider;
+
+type FormFieldContextValue<
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
+> = {
+  name: TName;
+};
+
+const FormFieldContext = React.createContext<FormFieldContextValue | null>(null);
+
+function FormField<
+  TFieldValues extends FieldValues = FieldValues,
+  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
+>(props: ControllerProps<TFieldValues, TName>) {
+  return (
+    <FormFieldContext.Provider value={{ name: props.name }}>
+      <Controller {...props} />
+    </FormFieldContext.Provider>
+  );
+}
+
+type FormItemContextValue = { id: string };
+
+const FormItemContext = React.createContext<FormItemContextValue | null>(null);
+
+function useFormField() {
+  const fieldContext = React.useContext(FormFieldContext);
+  const itemContext = React.useContext(FormItemContext);
+  const { getFieldState } = useFormContext();
+
+  if (!fieldContext) throw new Error('useFormField tem de ser usado dentro de <FormField>');
+  if (!itemContext) throw new Error('useFormField tem de ser usado dentro de <FormItem>');
+
+  const formState = useFormState({ name: fieldContext.name });
+  const fieldState = getFieldState(fieldContext.name, formState);
+  const { id } = itemContext;
+
+  return {
+    id,
+    name: fieldContext.name,
+    formItemId: `${id}-form-item`,
+    formDescriptionId: `${id}-form-item-description`,
+    formMessageId: `${id}-form-item-message`,
+    ...fieldState,
+  };
+}
+
+function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
+  const id = React.useId();
+  return (
+    <FormItemContext.Provider value={{ id }}>
+      <div
+        data-slot="form-item"
+        className={cn('flex w-full flex-col gap-1.5', className)}
+        {...props}
+      />
+    </FormItemContext.Provider>
+  );
+}
+
+function FormLabel({ className, ...props }: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  const { error, formItemId } = useFormField();
+  return (
+    <Label
+      data-slot="form-label"
+      data-error={!!error}
+      className={className}
+      htmlFor={formItemId}
+      {...props}
+    />
+  );
+}
+
+function FormControl(props: React.ComponentProps<typeof Slot.Root>) {
+  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+  const [hasDescription, setHasDescription] = React.useState(false);
+
+  // A descrição é opcional: só entra no aria-describedby se existir no DOM.
+  React.useLayoutEffect(() => {
+    setHasDescription(document.getElementById(formDescriptionId) !== null);
+  }, [formDescriptionId]);
+
+  const describedBy = [hasDescription && formDescriptionId, error && formMessageId]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <Slot.Root
+      data-slot="form-control"
+      id={formItemId}
+      aria-describedby={describedBy || undefined}
+      aria-invalid={!!error}
+      {...props}
+    />
+  );
+}
+
+function FormDescription({ className, ...props }: React.ComponentProps<'p'>) {
+  const { formDescriptionId } = useFormField();
+  return (
+    <p
+      data-slot="form-description"
+      id={formDescriptionId}
+      className={cn('m-0 font-body text-caption font-medium text-ink-muted', className)}
+      {...props}
+    />
+  );
+}
+
+function FormMessage({ className, children, ...props }: React.ComponentProps<'p'>) {
+  const { error, formMessageId } = useFormField();
+  const body = error ? String(error.message ?? '') : children;
+
+  if (!body) return null;
+
+  // O erro nunca depende só da cor: ícone de alerta + texto que diz o que corrigir.
+  return (
+    <p
+      data-slot="form-message"
+      id={formMessageId}
+      className={cn(
+        'm-0 flex items-start gap-1.5 font-body text-caption font-medium text-danger',
+        className,
+      )}
+      {...props}
+    >
+      <CircleAlert aria-hidden="true" className="size-[18px] shrink-0" />
+      {body}
+    </p>
+  );
+}
+
+export {
+  useFormField,
+  Form,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormDescription,
+  FormMessage,
+  FormField,
+};
