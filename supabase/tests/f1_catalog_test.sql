@@ -8,10 +8,12 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(177);
+select plan(263);
 
--- Os testes não dependem do seed: dentro desta transação apagam-se as lojas,
--- os produtos e as imagens que o seed criou (o rollback final repõe-nos).
+-- Os testes não dependem do seed: dentro desta transação apagam-se os
+-- destaques, as lojas, os produtos e as imagens que o seed criou (o rollback
+-- final repõe-nos). Os destaques vão primeiro: a FK para stores é restrict.
+delete from public.store_features;
 delete from public.product_images;
 delete from public.products;
 delete from public.stores;
@@ -819,6 +821,446 @@ select results_eq(
 select is(
   (select count(*)::int from pg_policies where schemaname = 'storage' and tablename = 'objects'),
   0, '(l) não há políticas em storage.objects (a escrita do dono fica para F2)');
+
+-- ===========================================================================
+-- (m) Destaques de lojas (store_features), geridos pela administração
+-- ===========================================================================
+-- Tabela, acesso e índices.
+select ok((select relrowsecurity from pg_class where oid = 'public.store_features'::regclass),
+  '(m) RLS ligada em store_features');
+select is((select count(*)::int from pg_policies where schemaname = 'public' and tablename = 'store_features'),
+  0, '(m) store_features não tem políticas');
+select ok(
+  not (select bool_or(has_table_privilege(r, 'public.store_features', p))
+         from unnest(array['anon', 'authenticated']) r,
+              unnest(array['select', 'insert', 'update', 'delete', 'truncate']) p),
+  '(m) anon e authenticated não têm privilégios de tabela em store_features');
+select is(
+  (select count(*)::int from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'store_features' and grantee in ('anon', 'authenticated')),
+  0, '(m) anon e authenticated não têm privilégios de coluna em store_features');
+select ok(
+  (select bool_and(has_table_privilege('service_role', 'public.store_features', p))
+     from unnest(array['select', 'insert', 'update', 'delete']) p),
+  '(m) service_role tem select, insert, update e delete em store_features');
+select ok(
+  exists (select 1 from pg_indexes
+           where schemaname = 'public' and tablename = 'store_features'
+             and indexdef like 'CREATE UNIQUE INDEX % ON public.store_features USING btree (store_id, source) WHERE is_active'),
+  '(m) índice único parcial (store_id, source) where is_active');
+select is(
+  (select array_agg(a.attname::text order by a.attname::text)
+     from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = i.indkey[0]
+    where i.indrelid = 'public.store_features'::regclass and i.indpred is null and not i.indisprimary),
+  array['created_by', 'position', 'store_id', 'updated_by'],
+  '(m) há índices a começar por store_id, created_by, updated_by e position');
+select ok(
+  exists (select 1 from pg_index i
+           where i.indrelid = 'public.store_features'::regclass and i.indnatts = 2
+             and (select attname from pg_attribute where attrelid = i.indrelid and attnum = i.indkey[0]) = 'position'
+             and (select attname from pg_attribute where attrelid = i.indrelid and attnum = i.indkey[1]) = 'created_at'),
+  '(m) índice (position, created_at)');
+
+-- Funções: propriedades e permissões.
+select ok(
+  (select p.prosecdef and p.provolatile = 's' and p.proconfig @> array['search_path=""']
+     from pg_proc p where p.oid = 'public.list_featured_stores()'::regprocedure),
+  '(m) list_featured_stores é security definer, stable e com search_path vazio');
+select ok(
+  has_function_privilege('anon', 'public.list_featured_stores()', 'execute')
+  and has_function_privilege('authenticated', 'public.list_featured_stores()', 'execute'),
+  '(m) anon e authenticated executam list_featured_stores');
+select is(
+  (select count(*)::int
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('admin_list_store_features', 'admin_save_store_feature', 'admin_set_store_feature_active',
+                        'admin_remove_store_feature', 'admin_reorder_store_features')
+      and p.prosecdef and p.proconfig @> array['search_path=""']
+      and has_function_privilege('authenticated', p.oid, 'execute')
+      and not has_function_privilege('anon', p.oid, 'execute')),
+  5, '(m) as cinco funções de gestão são security definer, com search_path vazio, só para authenticated');
+select is(
+  (select count(*)::int
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace,
+          aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+    where n.nspname = 'public'
+      and (p.proname like 'admin\_%store\_feature%' or p.proname = 'list_featured_stores')
+      and a.grantee = 0),
+  0, '(m) PUBLIC não executa nenhuma das funções de destaques');
+
+-- Preparação (como postgres): lojas próprias desta secção.
+select pg_temp.signup(('10000000-0000-0000-0000-0000000001' || lpad(g::text, 2, '0'))::uuid,
+                      'destaque' || g || '@exemplo.test')
+  from generate_series(1, 11) g;
+
+insert into public.stores (id, owner_id, name, slug, category_id, status, submitted_at, decided_at, decided_by)
+select ('a1000000-0000-0000-0000-0000000000' || lpad(v.n::text, 2, '0'))::uuid,
+       ('10000000-0000-0000-0000-0000000001' || lpad(v.n::text, 2, '0'))::uuid,
+       v.name, v.slug, pg_temp.cat('doces'), v.status::public.store_status, now(),
+       case when v.status <> 'pending_approval' then now() end,
+       case when v.status <> 'pending_approval' then '10000000-0000-0000-0000-000000000009'::uuid end
+  from (values
+    (1, 'Destaque Sem Período', 'destaque-sem-periodo', 'approved'),
+    (2, 'Destaque Período Atual', 'destaque-periodo-atual', 'approved'),
+    (3, 'Destaque Passado', 'destaque-passado', 'approved'),
+    (4, 'Destaque Futuro', 'destaque-futuro', 'approved'),
+    (5, 'Destaque Inativo', 'destaque-inativo', 'approved'),
+    (6, 'Destaque Suspensa', 'destaque-suspensa', 'suspended'),
+    (7, 'Destaque Pendente', 'destaque-pendente', 'pending_approval'),
+    (8, 'Destaque Livre', 'destaque-livre', 'approved'),
+    (9, 'Destaque Fim Agora', 'destaque-fim-agora', 'approved'),
+    (10, 'Destaque Início Agora', 'destaque-inicio-agora', 'approved'),
+    (11, 'Destaque Empate', 'destaque-empate', 'approved')
+  ) v(n, name, slug, status);
+
+-- Dentro da transação now() é fixo: os limites testam [starts_at, ends_at).
+insert into public.store_features (id, store_id, source, position, starts_at, ends_at, is_active, note, created_at)
+values
+  ('a2000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'admin', 2, null, null, true,
+   'Nota interna', now() - interval '2 days'),
+  ('a2000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000002', 'admin', 1,
+   now() - interval '1 day', now() + interval '1 day', true, null, now()),
+  ('a2000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000003', 'admin', 0,
+   now() - interval '10 days', now() - interval '1 day', true, null, now()),
+  ('a2000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000004', 'admin', 0,
+   now() + interval '1 day', null, true, null, now()),
+  ('a2000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000005', 'admin', 0, null, null, false, null, now()),
+  ('a2000000-0000-0000-0000-000000000006', 'a1000000-0000-0000-0000-000000000006', 'admin', 0, null, null, true, null, now()),
+  ('a2000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000009', 'admin', 0, null, now(), true, null, now()),
+  ('a2000000-0000-0000-0000-000000000010', 'a1000000-0000-0000-0000-000000000010', 'admin', 3, now(), null, true, null, now()),
+  ('a2000000-0000-0000-0000-000000000011', 'a1000000-0000-0000-0000-000000000011', 'admin', 2, null, null, true,
+   null, now() - interval '1 day'),
+  -- Um destaque pago na mesma loja que um admin: a loja aparece uma só vez.
+  ('a2000000-0000-0000-0000-000000000012', 'a1000000-0000-0000-0000-000000000001', 'paid', 4, null, null, true,
+   null, now() - interval '3 days');
+
+-- CHECKs e índice único.
+select throws_ok(
+  $$ insert into public.store_features (store_id, starts_at, ends_at)
+     values ('a1000000-0000-0000-0000-000000000008', now(), now() - interval '1 hour') $$,
+  '23514', null, '(m) ends_at antes de starts_at é recusado');
+select throws_ok(
+  $$ insert into public.store_features (store_id, starts_at, ends_at)
+     values ('a1000000-0000-0000-0000-000000000008', now(), now()) $$,
+  '23514', null, '(m) ends_at igual a starts_at é recusado');
+select throws_ok(
+  $$ insert into public.store_features (store_id, position) values ('a1000000-0000-0000-0000-000000000008', -1) $$,
+  '23514', null, '(m) position negativa é recusada');
+select throws_ok(
+  format($$ insert into public.store_features (store_id, note) values ('a1000000-0000-0000-0000-000000000008', %L) $$,
+         repeat('n', 281)),
+  '23514', null, '(m) uma nota com 281 caracteres é recusada');
+select throws_ok(
+  $$ insert into public.store_features (store_id, note) values ('a1000000-0000-0000-0000-000000000008', E'Nota\x01') $$,
+  '23514', 'INVALID_TEXT', '(m) uma nota com caracteres de controlo é recusada');
+select throws_ok(
+  $$ insert into public.store_features (store_id) values ('a1000000-0000-0000-0000-000000000001') $$,
+  '23505', null, '(m) no máximo um destaque admin ativo por loja');
+select throws_ok(
+  $$ insert into public.store_features (store_id) values ('00000000-0000-0000-0000-000000000000') $$,
+  '23503', null, '(m) um destaque de uma loja que não existe é recusado');
+select throws_ok(
+  $$ delete from public.stores where id = 'a1000000-0000-0000-0000-000000000001' $$,
+  '23503', null, '(m) uma loja em destaque não se apaga (restrict)');
+
+-- list_featured_stores como anon (ponto a vigiar 6).
+set local role anon;
+
+select results_eq(
+  $$ select slug, source from public.list_featured_stores() $$,
+  $$ values ('destaque-periodo-atual'::text, 'admin'::public.feature_source),
+            ('destaque-sem-periodo'::text, 'admin'::public.feature_source),
+            ('destaque-empate'::text, 'admin'::public.feature_source),
+            ('destaque-inicio-agora'::text, 'admin'::public.feature_source) $$,
+  '(m) só os destaques ativos, no período e de lojas aprovadas, por position e depois created_at');
+select ok(
+  exists (select 1 from public.list_featured_stores() where slug = 'destaque-sem-periodo'),
+  '(m) o destaque ativo sem período aparece');
+select ok(
+  exists (select 1 from public.list_featured_stores() where slug = 'destaque-periodo-atual'),
+  '(m) o destaque de período atual aparece');
+select ok(
+  not exists (select 1 from public.list_featured_stores()
+               where slug in ('destaque-passado', 'destaque-futuro', 'destaque-inativo', 'destaque-suspensa',
+                              'destaque-fim-agora')),
+  '(m) não aparecem os de período passado, futuro, terminado agora, inativos nem de loja suspensa');
+select results_eq(
+  $$ select name, slug, description, category_name, category_slug, logo_path, published_products_count,
+            rating_avg, rating_count, source
+       from public.list_featured_stores() where slug = 'destaque-sem-periodo' $$,
+  $$ values ('Destaque Sem Período'::text, 'destaque-sem-periodo'::text, ''::text, 'Doces'::text, 'doces'::text,
+             null::text, 0, null::numeric, 0, 'admin'::public.feature_source) $$,
+  '(m) list_featured_stores devolve as colunas de list_stores e source');
+select throws_ok($$ select note from public.list_featured_stores() $$, '42703', null,
+  '(m) list_featured_stores não tem a coluna note');
+select throws_ok($$ select created_by from public.list_featured_stores() $$, '42703', null,
+  '(m) list_featured_stores não tem a coluna created_by');
+select throws_ok($$ select updated_by from public.list_featured_stores() $$, '42703', null,
+  '(m) list_featured_stores não tem a coluna updated_by');
+select throws_ok($$ select id from public.store_features $$, '42501', null, '(m) anon não lê store_features');
+select throws_ok($$ select public.admin_list_store_features() $$, '42501', null,
+  '(m) anon não executa as funções de gestão');
+
+reset role;
+
+-- Não administrador: NOT_ALLOWED em cada uma das cinco funções.
+select pg_temp.as_user('10000000-0000-0000-0000-000000000001');
+set local role authenticated;
+
+select throws_ok($$ select id from public.store_features $$, '42501', null, '(m) authenticated não lê store_features');
+select ok(exists (select 1 from public.list_featured_stores()), '(m) authenticated também lê list_featured_stores');
+select throws_ok($$ select * from public.admin_list_store_features() $$, 'P0001', 'NOT_ALLOWED',
+  '(m) não administrador: admin_list_store_features dá NOT_ALLOWED');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000008', 0, null, null, null) $$,
+  'P0001', 'NOT_ALLOWED', '(m) não administrador: admin_save_store_feature dá NOT_ALLOWED');
+select throws_ok(
+  $$ select public.admin_set_store_feature_active('a2000000-0000-0000-0000-000000000001', false) $$,
+  'P0001', 'NOT_ALLOWED', '(m) não administrador: admin_set_store_feature_active dá NOT_ALLOWED');
+select throws_ok(
+  $$ select public.admin_remove_store_feature('a2000000-0000-0000-0000-000000000001') $$,
+  'P0001', 'NOT_ALLOWED', '(m) não administrador: admin_remove_store_feature dá NOT_ALLOWED');
+select throws_ok(
+  $$ select public.admin_reorder_store_features(array['a2000000-0000-0000-0000-000000000001'::uuid]) $$,
+  'P0001', 'NOT_ALLOWED', '(m) não administrador: admin_reorder_store_features dá NOT_ALLOWED');
+
+reset role;
+select is((select count(*)::int from public.store_features where id = 'a2000000-0000-0000-0000-000000000001' and is_active),
+  1, '(m) as chamadas recusadas não mudaram nada');
+
+-- Administrador.
+insert into public.admin_users (user_id) values ('10000000-0000-0000-0000-000000000009');
+select pg_temp.as_user('10000000-0000-0000-0000-000000000009');
+set local role authenticated;
+
+select results_eq(
+  $$ select id, store_slug, store_status, is_live from public.admin_list_store_features()
+      where id in ('a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000003',
+                   'a2000000-0000-0000-0000-000000000006', 'a2000000-0000-0000-0000-000000000005')
+      order by id $$,
+  $$ values ('a2000000-0000-0000-0000-000000000001'::uuid, 'destaque-sem-periodo'::text, 'approved'::public.store_status, true),
+            ('a2000000-0000-0000-0000-000000000003'::uuid, 'destaque-passado'::text, 'approved'::public.store_status, false),
+            ('a2000000-0000-0000-0000-000000000005'::uuid, 'destaque-inativo'::text, 'approved'::public.store_status, false),
+            ('a2000000-0000-0000-0000-000000000006'::uuid, 'destaque-suspensa'::text, 'suspended'::public.store_status, false) $$,
+  '(m) admin_list_store_features diz se cada destaque aparece agora (is_live)');
+select is(
+  (select note from public.admin_list_store_features() where id = 'a2000000-0000-0000-0000-000000000001'),
+  'Nota interna', '(m) admin_list_store_features mostra a nota interna');
+select is(
+  (select count(*)::int from public.admin_list_store_features() where id = 'a2000000-0000-0000-0000-000000000012'),
+  0, '(m) admin_list_store_features não mostra destaques pagos');
+
+-- Criar.
+select set_config('test.f_new',
+  public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000008', 5, null, null, E'  Nota \t  da   equipa ')::text,
+  true);
+select results_eq(
+  $$ select store_id, source, position, starts_at, ends_at, is_active, note, is_live
+       from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid $$,
+  $$ values ('a1000000-0000-0000-0000-000000000008'::uuid, 'admin'::public.feature_source, 5,
+             null::timestamptz, null::timestamptz, true, 'Nota da equipa'::text, true) $$,
+  '(m) admin_save_store_feature cria um destaque admin ativo, com a nota normalizada');
+select ok(
+  exists (select 1 from public.list_featured_stores() where slug = 'destaque-livre'),
+  '(m) o destaque criado aparece em list_featured_stores');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000008', 5, null, null, E'  Nota \t  da   equipa ') $$,
+  'P0001', 'FEATURE_EXISTS', '(m) repetir a criação dá FEATURE_EXISTS');
+select is(
+  (select count(*)::int from public.admin_list_store_features() where store_id = 'a1000000-0000-0000-0000-000000000008'),
+  1, '(m) repetir a criação não cria um segundo destaque');
+
+-- Alterar.
+select is(
+  public.admin_save_store_feature(current_setting('test.f_new')::uuid, 'a1000000-0000-0000-0000-000000000008', 0,
+    now() - interval '1 hour', now() + interval '1 hour', '   '),
+  current_setting('test.f_new')::uuid, '(m) alterar devolve o mesmo id');
+select results_eq(
+  $$ select position, starts_at, ends_at, note, is_live
+       from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid $$,
+  $$ values (0, now() - interval '1 hour', now() + interval '1 hour', null::text, true) $$,
+  '(m) admin_save_store_feature altera o destaque (uma nota só com espaços fica nula)');
+
+-- Erros de entrada.
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', 0, now(), now() - interval '1 hour', null) $$,
+  'P0001', 'INVALID_PERIOD', '(m) fim antes do início dá INVALID_PERIOD');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', 0, now(), now(), null) $$,
+  'P0001', 'INVALID_PERIOD', '(m) fim igual ao início dá INVALID_PERIOD');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000007', 0, null, null, null) $$,
+  'P0001', 'STORE_NOT_APPROVED', '(m) uma loja pendente dá STORE_NOT_APPROVED');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, '00000000-0000-0000-0000-000000000000', 0, null, null, null) $$,
+  'P0001', 'STORE_NOT_APPROVED', '(m) uma loja que não existe dá STORE_NOT_APPROVED');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000001', 0, null, null, null) $$,
+  'P0001', 'FEATURE_EXISTS', '(m) uma loja que já tem destaque ativo dá FEATURE_EXISTS');
+select throws_ok(
+  $$ select public.admin_save_store_feature(current_setting('test.f_new')::uuid, 'a1000000-0000-0000-0000-000000000001',
+       0, null, null, null) $$,
+  'P0001', 'FEATURE_EXISTS', '(m) mudar um destaque para uma loja que já tem destaque ativo dá FEATURE_EXISTS');
+select throws_ok(
+  $$ select public.admin_save_store_feature('00000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000008',
+       0, null, null, null) $$,
+  'P0001', 'NOT_FOUND', '(m) um p_id desconhecido dá NOT_FOUND');
+select throws_ok(
+  format($$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', 0, null, null, %L) $$,
+         repeat('n', 281)),
+  '23514', null, '(m) uma nota com mais de 280 caracteres é recusada');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', 0, null, null, E'Nota\x01') $$,
+  '23514', 'INVALID_TEXT', '(m) uma nota com caracteres de controlo dá INVALID_TEXT');
+
+-- Ativar e desativar.
+select lives_ok(
+  $$ select public.admin_set_store_feature_active(current_setting('test.f_new')::uuid, false) $$,
+  '(m) admin_set_store_feature_active desativa');
+select ok(
+  not exists (select 1 from public.list_featured_stores() where slug = 'destaque-livre'),
+  '(m) um destaque desativado sai de list_featured_stores');
+select lives_ok(
+  $$ select public.admin_set_store_feature_active(current_setting('test.f_new')::uuid, false) $$,
+  '(m) desativar outra vez não falha (idempotente)');
+select results_eq(
+  $$ select is_active, is_live from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid $$,
+  $$ values (false, false) $$, '(m) o destaque continua desativado');
+select throws_ok(
+  $$ select public.admin_set_store_feature_active('00000000-0000-0000-0000-000000000000', true) $$,
+  'P0001', 'NOT_FOUND', '(m) ativar um id desconhecido dá NOT_FOUND');
+-- Com o primeiro desativado, pode criar-se outro para a mesma loja; reativar o
+-- primeiro dá então FEATURE_EXISTS.
+select set_config('test.f_other',
+  public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000008', 0, null, null, null)::text, true);
+select throws_ok(
+  $$ select public.admin_set_store_feature_active(current_setting('test.f_new')::uuid, true) $$,
+  'P0001', 'FEATURE_EXISTS', '(m) reativar quando a loja já tem outro destaque ativo dá FEATURE_EXISTS');
+select lives_ok(
+  $$ select public.admin_remove_store_feature(current_setting('test.f_other')::uuid) $$,
+  '(m) admin_remove_store_feature apaga um destaque');
+select lives_ok(
+  $$ select public.admin_set_store_feature_active(current_setting('test.f_new')::uuid, true) $$,
+  '(m) admin_set_store_feature_active reativa');
+select ok(
+  exists (select 1 from public.list_featured_stores() where slug = 'destaque-livre'),
+  '(m) o destaque reativado volta a list_featured_stores');
+
+-- Ordenar. Regra: p_ids tem de ser exatamente o conjunto dos destaques admin
+-- ativos (is_active), em qualquer período.
+select set_config('test.order',
+  (select array_agg(id order by position desc, id desc)
+     from public.admin_list_store_features() where is_active)::text, true);
+select lives_ok(
+  $$ select public.admin_reorder_store_features(current_setting('test.order')::uuid[]) $$,
+  '(m) admin_reorder_store_features aceita o conjunto dos destaques ativos');
+select is(
+  (select array_agg(id order by position) from public.admin_list_store_features() where is_active),
+  current_setting('test.order')::uuid[], '(m) a ordem passa a ser a do array');
+select is(
+  (select array_agg(position order by position) from public.admin_list_store_features() where is_active),
+  (select array_agg(g - 1) from generate_series(1, cardinality(current_setting('test.order')::uuid[])) g),
+  '(m) position é o índice no array, a contar de 0');
+select is(
+  (select slug from public.list_featured_stores() limit 1), 'destaque-inicio-agora',
+  '(m) list_featured_stores segue a nova ordem');
+
+select throws_ok(
+  $$ select public.admin_reorder_store_features(
+       '00000000-0000-0000-0000-000000000000'::uuid || current_setting('test.order')::uuid[]) $$,
+  'P0001', 'NOT_FOUND', '(m) um id desconhecido dá NOT_FOUND');
+select throws_ok(
+  $$ select public.admin_reorder_store_features(
+       current_setting('test.order')::uuid[] || (current_setting('test.order')::uuid[])[1]) $$,
+  'P0001', 'NOT_FOUND', '(m) um id repetido dá NOT_FOUND');
+select throws_ok(
+  $$ select public.admin_reorder_store_features((current_setting('test.order')::uuid[])[2:]) $$,
+  'P0001', 'NOT_FOUND', '(m) faltar um destaque ativo dá NOT_FOUND');
+select throws_ok(
+  $$ select public.admin_reorder_store_features(
+       current_setting('test.order')::uuid[] || 'a2000000-0000-0000-0000-000000000005'::uuid) $$,
+  'P0001', 'NOT_FOUND', '(m) um destaque inativo no array dá NOT_FOUND');
+select throws_ok(
+  $$ select public.admin_reorder_store_features(
+       current_setting('test.order')::uuid[] || 'a2000000-0000-0000-0000-000000000012'::uuid) $$,
+  'P0001', 'NOT_FOUND', '(m) um destaque pago no array dá NOT_FOUND');
+select throws_ok(
+  $$ select public.admin_reorder_store_features(null) $$,
+  'P0001', 'NOT_FOUND', '(m) um array nulo, com destaques ativos, dá NOT_FOUND');
+select is(
+  (select array_agg(id order by position) from public.admin_list_store_features() where is_active),
+  current_setting('test.order')::uuid[], '(m) as ordenações recusadas não mudaram nada');
+
+-- Remover.
+select lives_ok(
+  $$ select public.admin_remove_store_feature(current_setting('test.f_new')::uuid) $$,
+  '(m) admin_remove_store_feature apaga o destaque');
+select is(
+  (select count(*)::int from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid),
+  0, '(m) o destaque apagado já não existe');
+select throws_ok(
+  $$ select public.admin_remove_store_feature(current_setting('test.f_new')::uuid) $$,
+  'P0001', 'NOT_FOUND', '(m) apagar outra vez dá NOT_FOUND');
+
+reset role;
+
+-- Autoria (como postgres).
+select set_config('request.jwt.claims', '', true);
+select pg_temp.as_user('10000000-0000-0000-0000-000000000009');
+set local role authenticated;
+select set_config('test.f_created',
+  public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000008', 0, null, null, null)::text, true);
+reset role;
+select results_eq(
+  $$ select created_by, updated_by from public.store_features where id = current_setting('test.f_created')::uuid $$,
+  $$ values ('10000000-0000-0000-0000-000000000009'::uuid, '10000000-0000-0000-0000-000000000009'::uuid) $$,
+  '(m) created_by e updated_by ficam com o administrador');
+
+-- Proteção do pago: as funções de gestão não mexem em linhas source = 'paid'.
+insert into public.store_features (id, store_id, source, position, note)
+values ('a2000000-0000-0000-0000-000000000013', 'a1000000-0000-0000-0000-000000000008', 'paid', 7, 'Pago');
+set local role authenticated;
+select throws_ok(
+  $$ select public.admin_save_store_feature('a2000000-0000-0000-0000-000000000013', 'a1000000-0000-0000-0000-000000000008',
+       0, null, null, 'Mudado') $$,
+  'P0001', 'NOT_FOUND', '(m) admin_save_store_feature dá NOT_FOUND num destaque pago');
+select throws_ok(
+  $$ select public.admin_set_store_feature_active('a2000000-0000-0000-0000-000000000013', false) $$,
+  'P0001', 'NOT_FOUND', '(m) admin_set_store_feature_active dá NOT_FOUND num destaque pago');
+select throws_ok(
+  $$ select public.admin_remove_store_feature('a2000000-0000-0000-0000-000000000013') $$,
+  'P0001', 'NOT_FOUND', '(m) admin_remove_store_feature dá NOT_FOUND num destaque pago');
+reset role;
+select results_eq(
+  $$ select source, position, is_active, note from public.store_features where id = 'a2000000-0000-0000-0000-000000000013' $$,
+  $$ values ('paid'::public.feature_source, 7, true, 'Pago'::text) $$,
+  '(m) o destaque pago ficou igual');
+select set_config('request.jwt.claims', '', true);
+
+-- Uma loja que passa a suspended sai dos destaques.
+update public.stores set status = 'suspended' where id = 'a1000000-0000-0000-0000-000000000002';
+set local role anon;
+select ok(
+  not exists (select 1 from public.list_featured_stores() where slug = 'destaque-periodo-atual'),
+  '(m) o destaque de uma loja que passou a suspended não aparece');
+reset role;
+
+-- No máximo 10 destaques.
+select pg_temp.signup(('10000000-0000-0000-0000-0000000002' || lpad(g::text, 2, '0'))::uuid,
+                      'limite' || g || '@exemplo.test')
+  from generate_series(1, 12) g;
+insert into public.stores (id, owner_id, name, slug, category_id, status, submitted_at, decided_at, decided_by)
+select ('a3000000-0000-0000-0000-0000000000' || lpad(g::text, 2, '0'))::uuid,
+       ('10000000-0000-0000-0000-0000000002' || lpad(g::text, 2, '0'))::uuid,
+       'Limite ' || g, 'limite-' || g, pg_temp.cat('doces'), 'approved', now(), now(),
+       '10000000-0000-0000-0000-000000000009'
+  from generate_series(1, 12) g;
+insert into public.store_features (store_id, position)
+select ('a3000000-0000-0000-0000-0000000000' || lpad(g::text, 2, '0'))::uuid, 100 + g from generate_series(1, 12) g;
+set local role anon;
+select is((select count(*)::int from public.list_featured_stores()), 10, '(m) list_featured_stores devolve no máximo 10');
+reset role;
 
 select * from finish();
 rollback;

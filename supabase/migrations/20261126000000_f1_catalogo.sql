@@ -238,6 +238,11 @@ begin
        or new.moderation_reason ~ '[[:cntrl:]]' then
       raise exception using errcode = '23514', message = 'INVALID_TEXT';
     end if;
+  elsif tg_table_name = 'store_features' then
+    new.note := private.normalize_text(new.note);
+    if new.note ~ '[[:cntrl:]]' then
+      raise exception using errcode = '23514', message = 'INVALID_TEXT';
+    end if;
   end if;
   return new;
 end;
@@ -617,3 +622,361 @@ on conflict (id) do update
       public = excluded.public,
       file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
+
+-- ---------------------------------------------------------------------------
+-- 11. Destaques de lojas na página inicial (C01).
+--     * Vivem em store_features, com a origem (admin ou paid), a ordem e um
+--       período opcional. Nesta fase só existe o caminho admin; paid fica
+--       reservado para a promoção paga, com funções próprias.
+--     * Sem leitura direta pelo cliente: RLS ligada, sem políticas nem grants
+--       para anon e authenticated. Lê-se por list_featured_stores (público)
+--       e admin_list_store_features (administração).
+--     * Um destaque está no ar quando is_active e now() está dentro de
+--       [starts_at, ends_at), sendo que um limite nulo não limita, e a loja
+--       está approved. A regra do período vive só em private.feature_is_live.
+-- ---------------------------------------------------------------------------
+create type public.feature_source as enum ('admin', 'paid');
+
+create table public.store_features (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores (id) on delete restrict,
+  source public.feature_source not null default 'admin',
+  position integer not null default 0 check (position >= 0),
+  starts_at timestamptz null,
+  ends_at timestamptz null,
+  is_active boolean not null default true,
+  -- Nota interna da administração; nunca sai por list_featured_stores.
+  note text null
+    check (
+      note = btrim(note) and note ~ '[^[:space:]]' and note !~ '[[:cntrl:]]'
+      and char_length(note) <= 280
+    ),
+  created_by uuid null references auth.users (id) on delete restrict,
+  updated_by uuid null references auth.users (id) on delete restrict,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint store_features_period_valid check (ends_at is null or starts_at is null or ends_at > starts_at)
+);
+
+-- No máximo um destaque ativo por loja e por origem. É também o que torna a
+-- criação idempotente: repetir dá FEATURE_EXISTS (ver admin_save_store_feature).
+create unique index store_features_one_active_idx on public.store_features (store_id, source) where is_active;
+-- O índice único é parcial e não serve a FK; os restantes cobrem as FKs e a ordem.
+create index store_features_store_id_idx on public.store_features (store_id);
+create index store_features_created_by_idx on public.store_features (created_by);
+create index store_features_updated_by_idx on public.store_features (updated_by);
+create index store_features_position_created_at_idx on public.store_features (position, created_at);
+
+create trigger set_updated_at
+  before update on public.store_features
+  for each row execute function private.set_updated_at();
+
+create trigger normalize_text_fields
+  before insert or update on public.store_features
+  for each row execute function private.normalize_text_fields();
+
+alter table public.store_features enable row level security;
+grant select, insert, update, delete on public.store_features to service_role;
+
+-- O período e o estado do próprio destaque (a loja aprovada verifica-se à
+-- parte, por quem chama). now() é a hora da transação.
+create function private.feature_is_live(f public.store_features)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select f.is_active
+     and (f.starts_at is null or f.starts_at <= now())
+     and (f.ends_at is null or now() < f.ends_at);
+$$;
+revoke execute on function private.feature_is_live(public.store_features) from public, anon, authenticated;
+
+-- Lojas em destaque para C01, no máximo 10. SECURITY DEFINER porque anon não
+-- lê store_features; por isso filtra ele próprio a loja approved e as
+-- categorias visíveis (como as RLS fariam em list_stores). Devolve as colunas
+-- de list_stores e source, nunca note, created_by nem updated_by. Uma loja
+-- com mais de um destaque no ar (admin e paid) aparece uma só vez, com o de
+-- menor position.
+create function public.list_featured_stores()
+returns table (
+  id uuid,
+  name text,
+  slug text,
+  description text,
+  category_name text,
+  category_slug text,
+  logo_path text,
+  published_products_count integer,
+  rating_avg numeric,
+  rating_count integer,
+  source public.feature_source
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select l.id, l.name, l.slug, l.description, l.category_name, l.category_slug, l.logo_path,
+         l.published_products_count, l.rating_avg, l.rating_count, l.source
+    from (
+      select distinct on (s.id)
+             s.id, s.name, s.slug, s.description, c.name as category_name, c.slug as category_slug, s.logo_path,
+             s.published_products_count, s.rating_avg, s.rating_count, f.source,
+             f.position, f.created_at as feature_created_at, f.id as feature_id
+        from public.store_features f
+        join public.stores s on s.id = f.store_id
+        left join public.categories c on c.id = s.category_id and c.is_visible
+       where s.status = 'approved'
+         and private.feature_is_live(f)
+       order by s.id, f.position, f.created_at, f.id
+    ) l
+   order by l.position, l.feature_created_at, l.feature_id
+   limit 10;
+$$;
+revoke execute on function public.list_featured_stores() from public;
+grant execute on function public.list_featured_stores() to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 12. Gestão dos destaques pela administração.
+--     * Todas SECURITY DEFINER, search_path vazio, executáveis só por
+--       authenticated, e começam por verificar private.is_admin().
+--     * Só mexem em destaques source = 'admin': qualquer outra linha dá
+--       NOT_FOUND, como um id que não existe.
+--     * Erros (P0001): NOT_ALLOWED, NOT_FOUND, STORE_NOT_APPROVED,
+--       INVALID_PERIOD e FEATURE_EXISTS. A nota segue as regras das outras
+--       colunas de texto (trigger: INVALID_TEXT; CHECK: até 280 caracteres).
+-- ---------------------------------------------------------------------------
+create function public.admin_list_store_features()
+returns table (
+  id uuid,
+  store_id uuid,
+  store_name text,
+  store_slug text,
+  store_status public.store_status,
+  source public.feature_source,
+  "position" integer,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  is_active boolean,
+  note text,
+  is_live boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  return query
+    select f.id, f.store_id, s.name, s.slug, s.status, f.source, f.position, f.starts_at, f.ends_at,
+           f.is_active, f.note, (s.status = 'approved' and private.feature_is_live(f))
+      from public.store_features f
+      join public.stores s on s.id = f.store_id
+     where f.source = 'admin'
+     order by f.position, f.created_at, f.id;
+end;
+$$;
+revoke execute on function public.admin_list_store_features() from public, anon, authenticated;
+grant execute on function public.admin_list_store_features() to authenticated;
+
+-- Cria (p_id nulo) ou altera um destaque admin. Devolve o id.
+-- * Repetir uma criação não cria um segundo destaque: o índice único parcial
+--   recusa-o e o 23505 é traduzido para FEATURE_EXISTS (nunca chega cru ao
+--   cliente). O mesmo vale para mudar um destaque para outra loja que já
+--   tenha um ativo.
+-- * p_position nulo: 0 ao criar, a posição atual ao alterar.
+-- * Uma nota vazia ou só com espaços fica nula.
+create function public.admin_save_store_feature(
+  p_id uuid,
+  p_store_id uuid,
+  p_position integer,
+  p_starts_at timestamptz,
+  p_ends_at timestamptz,
+  p_note text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_note text := nullif(private.normalize_text(p_note), '');
+  v_id uuid;
+  v_constraint text;
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  if p_starts_at is not null and p_ends_at is not null and p_ends_at <= p_starts_at then
+    raise exception using errcode = 'P0001', message = 'INVALID_PERIOD';
+  end if;
+
+  if p_id is not null then
+    perform 1 from public.store_features f where f.id = p_id and f.source = 'admin' for update;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'NOT_FOUND';
+    end if;
+  end if;
+
+  if not exists (select 1 from public.stores s where s.id = p_store_id and s.status = 'approved') then
+    raise exception using errcode = 'P0001', message = 'STORE_NOT_APPROVED';
+  end if;
+
+  begin
+    if p_id is null then
+      insert into public.store_features (store_id, source, position, starts_at, ends_at, is_active, note, created_by, updated_by)
+      values (p_store_id, 'admin', coalesce(p_position, 0), p_starts_at, p_ends_at, true, v_note, v_uid, v_uid)
+      returning id into v_id;
+    else
+      update public.store_features f
+         set store_id = p_store_id,
+             position = coalesce(p_position, f.position),
+             starts_at = p_starts_at,
+             ends_at = p_ends_at,
+             note = v_note,
+             updated_by = v_uid
+       where f.id = p_id
+      returning f.id into v_id;
+    end if;
+  exception when unique_violation then
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint = 'store_features_one_active_idx' then
+      raise exception using errcode = 'P0001', message = 'FEATURE_EXISTS';
+    end if;
+    raise;
+  end;
+
+  return v_id;
+end;
+$$;
+revoke execute on function public.admin_save_store_feature(uuid, uuid, integer, timestamptz, timestamptz, text)
+  from public, anon, authenticated;
+grant execute on function public.admin_save_store_feature(uuid, uuid, integer, timestamptz, timestamptz, text)
+  to authenticated;
+
+-- Liga ou desliga um destaque admin. Idempotente: pedir o estado que já tem
+-- não escreve nada. Ligar um destaque de uma loja que já tem outro ativo dá
+-- FEATURE_EXISTS.
+create function public.admin_set_store_feature_active(p_id uuid, p_active boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_current boolean;
+  v_constraint text;
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  select f.is_active into v_current
+    from public.store_features f
+   where f.id = p_id and f.source = 'admin'
+     for update;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'NOT_FOUND';
+  end if;
+
+  if v_current is not distinct from p_active then
+    return;
+  end if;
+
+  begin
+    update public.store_features f
+       set is_active = p_active,
+           updated_by = (select auth.uid())
+     where f.id = p_id;
+  exception when unique_violation then
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint = 'store_features_one_active_idx' then
+      raise exception using errcode = 'P0001', message = 'FEATURE_EXISTS';
+    end if;
+    raise;
+  end;
+end;
+$$;
+revoke execute on function public.admin_set_store_feature_active(uuid, boolean) from public, anon, authenticated;
+grant execute on function public.admin_set_store_feature_active(uuid, boolean) to authenticated;
+
+-- Apaga um destaque admin. Apagar outra vez dá NOT_FOUND.
+create function public.admin_remove_store_feature(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  delete from public.store_features f where f.id = p_id and f.source = 'admin';
+  if not found then
+    raise exception using errcode = 'P0001', message = 'NOT_FOUND';
+  end if;
+end;
+$$;
+revoke execute on function public.admin_remove_store_feature(uuid) from public, anon, authenticated;
+grant execute on function public.admin_remove_store_feature(uuid) to authenticated;
+
+-- Grava position = índice no array (a contar de 0), numa só transação.
+-- Regra do conjunto: p_ids tem de ser exatamente o conjunto dos destaques
+-- admin ativos (is_active, em qualquer período), sem repetidos. Assim a
+-- ordem fica completa, sem posições repetidas, e uma lista desatualizada
+-- (outro administrador criou, apagou ou desligou um destaque entretanto) é
+-- recusada em vez de baralhar a ordem. Ids desconhecidos, repetidos, nulos,
+-- inativos, pagos ou em falta dão NOT_FOUND e nada muda. As linhas são
+-- bloqueadas por ordem de id, para duas ordenações concorrentes não entrarem
+-- em deadlock.
+create function public.admin_reorder_store_features(p_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ids uuid[] := coalesce(p_ids, '{}');
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  perform 1
+     from public.store_features f
+    where f.source = 'admin' and f.is_active
+    order by f.id
+      for update;
+
+  -- count(distinct) ignora nulos: um nulo ou um repetido no array falha aqui.
+  if cardinality(v_ids) <> (select count(distinct x) from unnest(v_ids) x)
+     or exists (
+       select x from unnest(v_ids) x
+       except
+       select f.id from public.store_features f where f.source = 'admin' and f.is_active)
+     or exists (
+       select f.id from public.store_features f where f.source = 'admin' and f.is_active
+       except
+       select x from unnest(v_ids) x) then
+    raise exception using errcode = 'P0001', message = 'NOT_FOUND';
+  end if;
+
+  update public.store_features f
+     set position = (o.ord - 1)::integer,
+         updated_by = (select auth.uid())
+    from unnest(v_ids) with ordinality o(id, ord)
+   where f.id = o.id
+     and f.position is distinct from (o.ord - 1)::integer;
+end;
+$$;
+revoke execute on function public.admin_reorder_store_features(uuid[]) from public, anon, authenticated;
+grant execute on function public.admin_reorder_store_features(uuid[]) to authenticated;

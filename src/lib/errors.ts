@@ -14,6 +14,10 @@ export const MESSAGES = {
   invalidAcademic: 'Revê os dados académicos.',
   invalidText: 'Há caracteres que não podemos aceitar.',
   invalidAffiliation: 'Escolhe o teu vínculo à UGS.',
+  storeNotApproved: 'Esta loja não está aprovada.',
+  invalidPeriod: 'A data de fim tem de ser depois da data de início.',
+  featureExists: 'Esta loja já está em destaque.',
+  invalidCursor: 'Não foi possível carregar mais resultados. Tenta outra vez.',
 } as const;
 
 const AUTH_BY_CODE: Record<string, string> = {
@@ -43,6 +47,10 @@ const DB_BY_CODE: Record<string, string> = {
   INVALID_ACADEMIC: MESSAGES.invalidAcademic,
   INVALID_TEXT: MESSAGES.invalidText,
   INVALID_AFFILIATION: MESSAGES.invalidAffiliation,
+  STORE_NOT_APPROVED: MESSAGES.storeNotApproved,
+  INVALID_PERIOD: MESSAGES.invalidPeriod,
+  FEATURE_EXISTS: MESSAGES.featureExists,
+  INVALID_CURSOR: MESSAGES.invalidCursor,
 };
 
 function lookup(table: Record<string, string>, key: string | undefined): string | undefined {

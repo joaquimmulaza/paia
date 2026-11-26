@@ -142,3 +142,19 @@ from (values
   ('b0000000-0000-4000-8000-000000000006'::uuid, 'snacks', 'Pipocas doces',
    '', 300, 10, true, 'visible', null, interval '2 days')
 ) as p (store_id, category_slug, name, description, price_kz, stock, is_published, moderation_status, moderation_reason, age);
+
+-- ---------------------------------------------------------------------------
+-- Destaques da página inicial (C01), escolhidos pela administração: Doces da
+-- Ana e Gelados Fresquinhos, ativos e sem período. O de Mimos da Teresa já
+-- terminou (ends_at no passado): fica na lista da administração, mas não
+-- aparece em C01.
+-- ---------------------------------------------------------------------------
+insert into public.store_features (store_id, source, position, starts_at, ends_at, is_active, note, created_by, updated_by)
+values
+  ('b0000000-0000-4000-8000-000000000001', 'admin', 0, null, null, true, null,
+   'a0000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000007'),
+  ('b0000000-0000-4000-8000-000000000005', 'admin', 1, null, null, true, null,
+   'a0000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000007'),
+  ('b0000000-0000-4000-8000-000000000004', 'admin', 2, now() - interval '30 days', now() - interval '1 day', true,
+   'Campanha de exemplo já terminada.',
+   'a0000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000007');
