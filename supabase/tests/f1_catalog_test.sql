@@ -8,7 +8,13 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(127);
+select plan(177);
+
+-- Os testes não dependem do seed: dentro desta transação apagam-se as lojas,
+-- os produtos e as imagens que o seed criou (o rollback final repõe-nos).
+delete from public.product_images;
+delete from public.products;
+delete from public.stores;
 
 -- Utilitários de teste (os mesmos de F0).
 create function pg_temp.signup(p_id uuid, p_email text)
@@ -139,6 +145,9 @@ select is(
   'a descrição colapsa espaços por linha, faz btrim por linha, junta 3+ quebras em 2 e tira caracteres invisíveis');
 select is(
   private.normalize_multiline(E'x\n\ny'), E'x\n\ny', 'normalize_multiline mantém uma linha em branco');
+select is(
+  private.normalize_multiline(U&'a\2028b\2029c'), E'a\nb\nc',
+  'normalize_multiline converte os separadores Unicode de linha e de parágrafo (U+2028, U+2029) em \n');
 
 select throws_ok(
   $$ insert into public.stores (owner_id, name, slug, category_id)
@@ -259,6 +268,10 @@ select throws_ok($$ select decided_by from public.stores $$, '42501', null, '(c)
 select throws_ok($$ select decided_at from public.stores $$, '42501', null, '(c) authenticated não lê stores.decided_at');
 select throws_ok($$ select submitted_at from public.stores $$, '42501', null, '(c) authenticated não lê stores.submitted_at');
 select throws_ok($$ select status from public.stores $$, '42501', null, '(c) authenticated não lê stores.status');
+select throws_ok($$ select id from public.stores where status = 'pending_approval' $$, '42501', null,
+  '(c) authenticated não filtra stores por status');
+select throws_ok($$ select id from public.stores order by owner_id $$, '42501', null,
+  '(c) authenticated não ordena stores por owner_id');
 select throws_ok($$ select is_published from public.products $$, '42501', null, '(c) authenticated não lê products.is_published');
 select throws_ok($$ select moderation_status from public.products $$, '42501', null, '(c) authenticated não lê products.moderation_status');
 select throws_ok($$ select moderation_reason from public.products $$, '42501', null, '(c) authenticated não lê products.moderation_reason');
@@ -554,6 +567,258 @@ select ok(
               unnest(array['public.categories', 'public.stores', 'public.products', 'public.product_images']) t,
               unnest(array['select', 'insert', 'update', 'delete', 'truncate']) p),
   'anon e authenticated não têm nenhum privilégio de tabela inteira nas quatro tabelas');
+
+-- ===========================================================================
+-- (k) Funções públicas do catálogo: pesquisa, detalhe e lojas
+-- ===========================================================================
+-- As cinco funções públicas: invoker, stable (search_key é immutable),
+-- search_path vazio e executáveis só por anon e authenticated (não por PUBLIC).
+select is(
+  (select count(*)::int
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('search_key', 'search_products', 'get_product', 'list_stores', 'get_store')
+      and not p.prosecdef
+      and p.proconfig @> array['search_path=""']
+      and p.provolatile = case when p.proname = 'search_key' then 'i' else 's' end),
+  5, '(k) as cinco funções são security invoker, com search_path vazio e a volatilidade certa');
+select ok(
+  (select bool_and(has_function_privilege(r, p.oid, 'execute'))
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace,
+          unnest(array['anon', 'authenticated']) r
+    where n.nspname = 'public'
+      and p.proname in ('search_key', 'search_products', 'get_product', 'list_stores', 'get_store')),
+  '(k) anon e authenticated executam as cinco funções');
+select is(
+  (select count(*)::int
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace,
+          aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+    where n.nspname = 'public'
+      and p.proname in ('search_key', 'search_products', 'get_product', 'list_stores', 'get_store')
+      and a.grantee = 0),
+  0, '(k) PUBLIC não executa nenhuma das cinco funções');
+
+select is(public.search_key('  PASTÉIS  '), 'pasteis', '(k) search_key tira acentos, maiúsculas e espaços nas pontas');
+select is(public.search_key(null), '', '(k) search_key de nulo é texto vazio');
+
+-- Preparação: lojas e produtos próprios desta secção, com datas fixas.
+select pg_temp.signup('10000000-0000-0000-0000-000000000011', 'pesquisa.doces@exemplo.test');
+select pg_temp.signup('10000000-0000-0000-0000-000000000012', 'pesquisa.salgados@exemplo.test');
+select pg_temp.signup('10000000-0000-0000-0000-000000000013', 'pesquisa.suspensa@exemplo.test');
+select pg_temp.signup('10000000-0000-0000-0000-000000000014', 'pesquisa.pendente@exemplo.test');
+
+insert into public.stores (id, owner_id, name, slug, description, category_id, logo_path, status, submitted_at, decided_at, decided_by)
+values
+  ('e0000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000011', 'Pesquisa Doces', 'pesquisa-doces',
+   'Doces para testar', pg_temp.cat('doces'), 'e0000000/logo.webp', 'approved', now(), now(), '10000000-0000-0000-0000-000000000009'),
+  ('e0000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000012', 'Pesquisa Salgados', 'pesquisa-salgados',
+   '', pg_temp.cat('salgados'), null, 'approved', now(), now(), '10000000-0000-0000-0000-000000000009'),
+  ('e0000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000013', 'Pesquisa Suspensa', 'pesquisa-suspensa',
+   '', pg_temp.cat('salgados'), null, 'suspended', now(), now(), '10000000-0000-0000-0000-000000000009'),
+  ('e0000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000014', 'Pesquisa Pendente', 'pesquisa-pendente',
+   '', pg_temp.cat('salgados'), null, 'pending_approval', now(), null, null);
+
+insert into public.products (id, store_id, category_id, name, description, price_kz, stock, is_published, moderation_status, moderation_reason, created_at)
+values
+  ('f0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000002', pg_temp.cat('salgados'),
+   'Pastéis de carne (3)', 'Três pastéis', 300, 5, true, 'visible', null, '2026-01-03T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000002', 'e0000000-0000-0000-0000-000000000001', pg_temp.cat('doces'),
+   'Bolo de chocolate', E'Fofo\ne húmido', 1000, 2, true, 'visible', null, '2026-01-02T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000003', 'e0000000-0000-0000-0000-000000000001', pg_temp.cat('doces'),
+   'Brigadeiro', '', 200, 0, true, 'visible', null, '2026-01-01T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000004', 'e0000000-0000-0000-0000-000000000001', pg_temp.cat('gelados'),
+   'Gelado por publicar', '', 400, 1, false, 'visible', null, '2026-01-06T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000005', 'e0000000-0000-0000-0000-000000000001', pg_temp.cat('doces'),
+   'Doce ocultado', '', 400, 1, true, 'hidden', 'Teste', '2026-01-06T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000006', 'e0000000-0000-0000-0000-000000000003', pg_temp.cat('salgados'),
+   'Pastéis da suspensa', '', 300, 1, true, 'visible', null, '2026-01-06T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000007', 'e0000000-0000-0000-0000-000000000001', pg_temp.cat('doces'),
+   'Queijada', '', 500, 3, true, 'visible', null, '2026-01-04T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000008', 'e0000000-0000-0000-0000-000000000001', pg_temp.cat('snacks'),
+   'Pipocas', '', 150, 9, true, 'visible', null, '2026-01-05T10:00:00Z'),
+  ('f0000000-0000-0000-0000-000000000009', 'e0000000-0000-0000-0000-000000000002', pg_temp.cat('salgados'),
+   repeat('x', 80), '', 700, 1, true, 'visible', null, '2026-01-02T09:00:00Z');
+
+-- Imagens de propósito fora de ordem: a principal é a de position = 0.
+insert into public.product_images (product_id, path, position)
+values
+  ('f0000000-0000-0000-0000-000000000002', 'e0000000/f0000002/1.webp', 1),
+  ('f0000000-0000-0000-0000-000000000002', 'e0000000/f0000002/0.webp', 0),
+  ('f0000000-0000-0000-0000-000000000005', 'e0000000/f0000005/0.webp', 0);
+
+set local role anon;
+
+-- Pesquisa (ponto a vigiar 1).
+select ok(
+  exists (select 1 from public.search_products('pasteis') where name = 'Pastéis de carne (3)'),
+  '(k) «pasteis» encontra «Pastéis de carne (3)»');
+select ok(
+  exists (select 1 from public.search_products('PASTÉIS') where name = 'Pastéis de carne (3)'),
+  '(k) «PASTÉIS» encontra «Pastéis de carne (3)»');
+select ok(
+  exists (select 1 from public.search_products('  carne (3) ') where name = 'Pastéis de carne (3)'),
+  '(k) a pesquisa ignora espaços nas pontas e trata parênteses como texto');
+select ok(
+  not exists (select 1 from public.search_products('pasteis') where name = 'Pastéis da suspensa'),
+  '(k) a pesquisa não devolve produtos de lojas não aprovadas');
+select is((select count(*)::int from public.search_products('%')), 0, '(k) «%» é texto, não curinga');
+select is((select count(*)::int from public.search_products('_')), 0, '(k) «_» é texto, não curinga');
+select is((select count(*)::int from public.search_products('a,b(')), 0, '(k) «a,b(» devolve 0 linhas sem erro');
+select is((select count(*)::int from public.search_products(E'\\')), 0, '(k) «\» devolve 0 linhas sem erro');
+select lives_ok(
+  format($$ select * from public.search_products(%L) $$, repeat('a', 200)),
+  '(k) uma pesquisa com 200 caracteres não falha');
+select results_eq(
+  format($$ select id from public.search_products(%L) $$, repeat('x', 80) || 'yyy'),
+  $$ values ('f0000000-0000-0000-0000-000000000009'::uuid) $$,
+  '(k) a pesquisa é cortada a 80 caracteres');
+select is(
+  (select count(*)::int from public.search_products('', p_store_slug => 'pesquisa-doces')),
+  (select count(*)::int from public.search_products(null, p_store_slug => 'pesquisa-doces')),
+  '(k) uma pesquisa vazia não filtra');
+
+-- Filtros.
+select ok(
+  (select bool_and(category_slug = 'doces') and count(*) > 0
+     from public.search_products(p_category_slug => 'doces', p_limit => 50)),
+  '(k) o filtro de categoria só devolve doces');
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'pesquisa-doces') $$,
+  $$ values ('f0000000-0000-0000-0000-000000000008'::uuid), ('f0000000-0000-0000-0000-000000000007'::uuid),
+            ('f0000000-0000-0000-0000-000000000002'::uuid), ('f0000000-0000-0000-0000-000000000003'::uuid) $$,
+  '(k) o filtro de loja só devolve os produtos visíveis dessa loja, dos mais recentes para os mais antigos');
+select is(
+  (select count(*)::int from public.search_products(p_store_slug => 'pesquisa-suspensa')),
+  0, '(k) filtrar por uma loja suspensa devolve 0 linhas');
+select is(
+  (select count(*)::int from public.search_products(p_category_slug => 'nao-existe')),
+  0, '(k) filtrar por uma categoria que não existe devolve 0 linhas');
+
+-- Colunas devolvidas e imagem principal.
+select results_eq(
+  $$ select name, price_kz, stock, created_at, store_name, store_slug, category_slug, main_image_path
+       from public.search_products(p_store_slug => 'pesquisa-doces', p_category_slug => 'doces')
+      where id = 'f0000000-0000-0000-0000-000000000002' $$,
+  $$ values ('Bolo de chocolate'::text, 1000, 2, '2026-01-02T10:00:00Z'::timestamptz, 'Pesquisa Doces'::text,
+             'pesquisa-doces'::text, 'doces'::text, 'e0000000/f0000002/0.webp'::text) $$,
+  '(k) search_products devolve as colunas públicas e a imagem de position = 0');
+select is(
+  (select main_image_path from public.search_products(p_store_slug => 'pesquisa-doces')
+    where id = 'f0000000-0000-0000-0000-000000000007'),
+  null, '(k) um produto sem imagens tem main_image_path nulo');
+
+-- Cursor por chave (3 doces de pesquisa-doces, p_limit = 2).
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'pesquisa-doces', p_category_slug => 'doces', p_limit => 2) $$,
+  $$ values ('f0000000-0000-0000-0000-000000000007'::uuid), ('f0000000-0000-0000-0000-000000000002'::uuid) $$,
+  '(k) recentes: a primeira página tem os 2 mais recentes');
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'pesquisa-doces', p_category_slug => 'doces', p_limit => 2,
+       p_after_created_at => '2026-01-02T10:00:00Z', p_after_id => 'f0000000-0000-0000-0000-000000000002') $$,
+  $$ values ('f0000000-0000-0000-0000-000000000003'::uuid) $$,
+  '(k) recentes: a segunda página devolve só o terceiro, sem repetir');
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'pesquisa-doces', p_category_slug => 'doces',
+       p_sort => 'preco-asc', p_limit => 2) $$,
+  $$ values ('f0000000-0000-0000-0000-000000000003'::uuid), ('f0000000-0000-0000-0000-000000000007'::uuid) $$,
+  '(k) preco-asc: a primeira página tem os 2 mais baratos');
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'pesquisa-doces', p_category_slug => 'doces',
+       p_sort => 'preco-asc', p_limit => 2,
+       p_after_price => 500, p_after_id => 'f0000000-0000-0000-0000-000000000007') $$,
+  $$ values ('f0000000-0000-0000-0000-000000000002'::uuid) $$,
+  '(k) preco-asc: a segunda página devolve só o terceiro, sem repetir');
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'pesquisa-doces', p_category_slug => 'doces',
+       p_sort => 'preco-desc', p_limit => 2,
+       p_after_price => 500, p_after_id => 'f0000000-0000-0000-0000-000000000007') $$,
+  $$ values ('f0000000-0000-0000-0000-000000000003'::uuid) $$,
+  '(k) preco-desc: a página seguinte continua a descer no preço');
+select throws_ok(
+  $$ select * from public.search_products(p_after_id => 'f0000000-0000-0000-0000-000000000007') $$,
+  'P0001', 'INVALID_CURSOR', '(k) um cursor incompleto é recusado');
+
+-- Limite e ordem inválida.
+select is(
+  (select count(*)::int from public.search_products(p_store_slug => 'pesquisa-doces', p_limit => 0)),
+  1, '(k) p_limit abaixo de 1 passa a 1');
+select throws_ok(
+  $$ select * from public.search_products(p_sort => 'x') $$,
+  'P0001', 'INVALID_SORT', '(k) uma ordem desconhecida dá INVALID_SORT');
+
+-- get_product (ponto a vigiar 2).
+select results_eq(
+  $$ select name, description, price_kz, stock, created_at, category_name, category_slug, store_name, store_slug,
+            store_rating_avg, store_rating_count, images
+       from public.get_product('f0000000-0000-0000-0000-000000000002') $$,
+  $$ values ('Bolo de chocolate'::text, E'Fofo\ne húmido'::text, 1000, 2, '2026-01-02T10:00:00Z'::timestamptz,
+             'Doces'::text, 'doces'::text, 'Pesquisa Doces'::text, 'pesquisa-doces'::text, null::numeric, 0,
+             '[{"path": "e0000000/f0000002/0.webp", "position": 0}, {"path": "e0000000/f0000002/1.webp", "position": 1}]'::jsonb) $$,
+  '(k) get_product devolve o produto com as imagens ordenadas por position');
+select is(
+  (select images from public.get_product('f0000000-0000-0000-0000-000000000007')),
+  '[]'::jsonb, '(k) um produto sem imagens tem images = []');
+select is((select count(*)::int from public.get_product('f0000000-0000-0000-0000-000000000004')), 0,
+  '(k) get_product de um produto não publicado devolve 0 linhas');
+select is((select count(*)::int from public.get_product('f0000000-0000-0000-0000-000000000005')), 0,
+  '(k) get_product de um produto hidden devolve 0 linhas');
+select is((select count(*)::int from public.get_product('f0000000-0000-0000-0000-000000000006')), 0,
+  '(k) get_product de um produto de loja suspensa devolve 0 linhas');
+select is((select count(*)::int from public.get_product('00000000-0000-0000-0000-000000000000')), 0,
+  '(k) get_product de um id que não existe devolve 0 linhas');
+
+-- list_stores e get_store.
+select results_eq(
+  $$ select slug from public.list_stores() $$,
+  $$ values ('pesquisa-doces'::text), ('pesquisa-salgados'::text), ('doces-da-ana'::text), ('loja-contador'::text) $$,
+  '(k) list_stores devolve só as aprovadas, por produtos publicados e depois por nome');
+select results_eq(
+  $$ select slug from public.list_stores('PESQUISA') $$,
+  $$ values ('pesquisa-doces'::text), ('pesquisa-salgados'::text) $$,
+  '(k) list_stores pesquisa no nome sem distinguir maiúsculas');
+select results_eq(
+  $$ select slug from public.list_stores(p_category_slug => 'salgados') $$,
+  $$ values ('pesquisa-salgados'::text) $$,
+  '(k) list_stores filtra por categoria e não mostra as não aprovadas');
+select is((select count(*)::int from public.list_stores('%')), 0, '(k) list_stores trata «%» como texto');
+select results_eq(
+  $$ select name, slug, description, category_name, category_slug, logo_path, published_products_count,
+            rating_avg, rating_count, product_categories
+       from public.get_store('pesquisa-doces') $$,
+  $$ values ('Pesquisa Doces'::text, 'pesquisa-doces'::text, 'Doces para testar'::text, 'Doces'::text, 'doces'::text,
+             'e0000000/logo.webp'::text, 4, null::numeric, 0,
+             '[{"name": "Doces", "slug": "doces"}, {"name": "Snacks", "slug": "snacks"}]'::jsonb) $$,
+  '(k) get_store devolve a loja e só as categorias dos seus produtos visíveis');
+select is((select count(*)::int from public.get_store('pesquisa-pendente')), 0,
+  '(k) get_store de uma loja pendente devolve 0 linhas');
+select is((select count(*)::int from public.get_store('pesquisa-suspensa')), 0,
+  '(k) get_store de uma loja suspensa devolve 0 linhas');
+
+reset role;
+
+-- Também como authenticated (a dona da loja pendente não a vê pela leitura pública).
+select pg_temp.as_user('10000000-0000-0000-0000-000000000014');
+set local role authenticated;
+select is((select count(*)::int from public.get_store('pesquisa-pendente')), 0,
+  '(k) a dona da loja pendente não a vê em get_store');
+select ok(
+  exists (select 1 from public.search_products('pasteis') where name = 'Pastéis de carne (3)'),
+  '(k) authenticated também pesquisa');
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- ===========================================================================
+-- (l) Storage: buckets públicos de leitura, sem políticas de escrita
+-- ===========================================================================
+select results_eq(
+  $$ select id, name, public, file_size_limit, allowed_mime_types
+       from storage.buckets where id in ('store-media', 'product-media') order by id $$,
+  $$ values ('product-media'::text, 'product-media'::text, true, 2097152::bigint, '{image/jpeg,image/png,image/webp}'::text[]),
+            ('store-media'::text, 'store-media'::text, true, 2097152::bigint, '{image/jpeg,image/png,image/webp}'::text[]) $$,
+  '(l) os buckets store-media e product-media existem, públicos, com 2 MB e só jpeg, png e webp');
+select is(
+  (select count(*)::int from pg_policies where schemaname = 'storage' and tablename = 'objects'),
+  0, '(l) não há políticas em storage.objects (a escrita do dono fica para F2)');
 
 select * from finish();
 rollback;
