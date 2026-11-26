@@ -4,9 +4,14 @@ import { Checkbox as CheckboxPrimitive } from 'radix-ui';
 import { CheckIcon } from 'lucide-react';
 import { cn, focusRing } from '@/lib/utils';
 
-function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+// forwardRef: em React 18 o `ref` não chega a um componente de função sem ele.
+const Checkbox = React.forwardRef<
+  React.ComponentRef<typeof CheckboxPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
+>(function Checkbox({ className, ...props }, ref) {
   return (
     <CheckboxPrimitive.Root
+      ref={ref}
       data-slot="checkbox"
       className={cn(
         // A caixa tem 22 px; o ::after alarga a zona tocável para 44 px sem mexer no desenho.
@@ -29,6 +34,6 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );
-}
+});
 
 export { Checkbox };

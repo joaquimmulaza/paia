@@ -6,3 +6,12 @@ import { afterEach } from 'vitest';
 afterEach(() => {
   cleanup();
 });
+
+// O jsdom não tem ResizeObserver; o Radix usa-o para medir a caixa e o botão de opção.
+if (!('ResizeObserver' in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

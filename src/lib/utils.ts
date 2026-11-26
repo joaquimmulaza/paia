@@ -7,7 +7,7 @@ const twMerge = extendTailwindMerge({
   extend: {
     theme: {
       shadow: ['hard', 'hard-brand', 'hard-sm', 'hard-hover', 'hard-brand-hover'],
-      text: ['label', 'body', 'caption'],
+      text: ['label', 'body', 'caption', 'display-xl', 'title', 'price', 'tag', 'body-lg', 'small'],
       font: ['display', 'body'],
     },
   },
