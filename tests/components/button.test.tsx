@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -70,5 +71,61 @@ describe('Button', () => {
     expect(link).toHaveAttribute('aria-busy', 'true');
     expect(link).toHaveAttribute('aria-disabled', 'true');
     expect(link.querySelector('[data-slot="spinner"]')).not.toBeNull();
+  });
+
+  it.each([
+    ['loading', { loading: true }],
+    ['disabled', { disabled: true }],
+  ])(
+    'asChild <a> com %s sai da ordem do Tab e não se ativa com clique nem com Enter',
+    async (_, state) => {
+      const user = userEvent.setup();
+      const onClick = vi.fn();
+      render(
+        <Button asChild {...state}>
+          <a href="#pedidos" onClick={onClick}>
+            Ver pedidos
+          </a>
+        </Button>,
+      );
+      const link = screen.getByRole('link', { name: 'Ver pedidos' });
+      expect(link).toHaveAttribute('tabindex', '-1');
+      expect(link).toHaveAttribute('aria-disabled', 'true');
+
+      const clickEvent = createEvent.click(link);
+      fireEvent(link, clickEvent);
+      expect(clickEvent.defaultPrevented).toBe(true);
+      expect(onClick).not.toHaveBeenCalled();
+
+      link.focus();
+      await user.keyboard('{Enter}');
+      expect(onClick).not.toHaveBeenCalled();
+      expect(window.location.hash).not.toBe('#pedidos');
+    },
+  );
+
+  it('asChild desativado (não a carregar) tem o aspeto tracejado; a carregar não', () => {
+    render(
+      <>
+        <Button asChild disabled>
+          <a href="#a">Desativado</a>
+        </Button>
+        <Button asChild loading>
+          <a href="#b">A abrir…</a>
+        </Button>
+      </>,
+    );
+    const cls = 'aria-disabled:not-aria-busy:border-dashed';
+    expect(screen.getByRole('link', { name: 'Desativado' })).toHaveClass(cls);
+    expect(screen.getByRole('link', { name: 'Desativado' })).not.toHaveAttribute('aria-busy');
+    expect(screen.getByRole('link', { name: 'A abrir…' })).toHaveAttribute('aria-busy', 'true');
+  });
+});
+
+describe('buttonVariants', () => {
+  it('usado sozinho não devolve classes em conflito', () => {
+    const icon = buttonVariants({ variant: 'icon' }).split(' ');
+    expect(icon.filter((c) => c.startsWith('min-h-'))).toEqual(['min-h-11']);
+    expect(icon.filter((c) => /^px-/.test(c))).toEqual(['px-0']);
   });
 });

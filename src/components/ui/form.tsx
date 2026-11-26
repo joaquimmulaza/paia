@@ -94,22 +94,15 @@ function FormLabel({ className, ...props }: React.ComponentProps<typeof LabelPri
 
 function FormControl(props: React.ComponentProps<typeof Slot.Root>) {
   const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
-  const [hasDescription, setHasDescription] = React.useState(false);
-
-  // A descrição é opcional: só entra no aria-describedby se existir no DOM.
-  React.useLayoutEffect(() => {
-    setHasDescription(document.getElementById(formDescriptionId) !== null);
-  }, [formDescriptionId]);
-
-  const describedBy = [hasDescription && formDescriptionId, error && formMessageId]
-    .filter(Boolean)
-    .join(' ');
+  // Como no shadcn: a descrição entra sempre no aria-describedby. Se não houver
+  // <FormDescription>, o id fica sem alvo, o que os leitores de ecrã ignoram.
+  const describedBy = error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId;
 
   return (
     <Slot.Root
       data-slot="form-control"
       id={formItemId}
-      aria-describedby={describedBy || undefined}
+      aria-describedby={describedBy}
       aria-invalid={!!error}
       {...props}
     />

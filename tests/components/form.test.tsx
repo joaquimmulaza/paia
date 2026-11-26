@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { describe, expect, it } from 'vitest';
 import {
@@ -39,7 +40,39 @@ function Telefone() {
   );
 }
 
+function DescricaoTardia() {
+  const form = useForm<{ name: string }>({ defaultValues: { name: '' } });
+  const [hint, setHint] = useState(false);
+  return (
+    <Form {...form}>
+      <FormField
+        control={form.control}
+        name="name"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Nome</FormLabel>
+            <FormControl>
+              <Input {...field} />
+            </FormControl>
+            {hint && <FormDescription>Até 40 caracteres.</FormDescription>}
+          </FormItem>
+        )}
+      />
+      <button type="button" onClick={() => setHint(true)}>
+        Mostrar ajuda
+      </button>
+    </Form>
+  );
+}
+
 describe('Form', () => {
+  it('uma descrição que aparece depois da montagem fica ligada ao campo', async () => {
+    const user = userEvent.setup();
+    render(<DescricaoTardia />);
+    await user.click(screen.getByRole('button', { name: 'Mostrar ajuda' }));
+    expect(screen.getByLabelText('Nome')).toHaveAccessibleDescription('Até 40 caracteres.');
+  });
+
   it('liga o rótulo e a descrição ao campo', () => {
     render(<Telefone />);
     const input = screen.getByLabelText('Telefone');

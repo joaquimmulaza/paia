@@ -11,7 +11,7 @@ const lift =
 const press =
   'active:not-disabled:translate-x-[var(--press-offset)] active:not-disabled:translate-y-[var(--press-offset)] active:not-disabled:shadow-none active:not-disabled:duration-0';
 
-const buttonVariants = cva(
+const buttonVariantsBase = cva(
   [
     'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap select-none',
     'border-2 border-ink rounded-md font-display font-bold text-base no-underline',
@@ -20,7 +20,9 @@ const buttonVariants = cva(
     focusRing,
     'aria-busy:cursor-progress aria-disabled:pointer-events-none',
     // Desativado (não a carregar): tracejado em line-muted, sem fundo e sem sombra.
+    // `disabled:` serve o <button>; `aria-disabled:` serve o asChild (por exemplo um <a>).
     'disabled:not-aria-busy:cursor-not-allowed disabled:not-aria-busy:border-dashed disabled:not-aria-busy:border-line-muted disabled:not-aria-busy:bg-transparent disabled:not-aria-busy:text-line-muted disabled:not-aria-busy:shadow-none',
+    'aria-disabled:not-aria-busy:border-dashed aria-disabled:not-aria-busy:border-line-muted aria-disabled:not-aria-busy:bg-transparent aria-disabled:not-aria-busy:text-line-muted aria-disabled:not-aria-busy:shadow-none',
     "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-6",
   ],
   {
@@ -66,8 +68,13 @@ const buttonVariants = cva(
   },
 );
 
+/** As classes do botão, já sem conflitos (passam pelo twMerge), para usar fora do <Button>. */
+function buttonVariants(...args: Parameters<typeof buttonVariantsBase>) {
+  return cn(buttonVariantsBase(...args));
+}
+
 type ButtonProps = React.ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & {
+  VariantProps<typeof buttonVariantsBase> & {
     asChild?: boolean;
     /** Mostra o indicador, marca `aria-busy` e não aceita mais toques. O texto deve dizer o que acontece («A enviar…»). */
     loading?: boolean;
@@ -101,9 +108,23 @@ function Button({
     }
   }, [variant, hasName]);
 
-  const classes = cn(buttonVariants({ variant, size, className }));
+  const classes = buttonVariants({ variant, size, className });
 
   if (asChild) {
+    // Um <a> não tem `disabled`: sai da ordem do Tab, fica aria-disabled e o clique
+    // (o Enter num link também dispara click) é travado na fase de captura, antes do
+    // onClick do filho, que o Slot chamaria primeiro.
+    const inert = loading || disabled;
+    const inertProps = inert
+      ? {
+          'aria-disabled': true,
+          tabIndex: -1,
+          onClickCapture: (event: React.MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+          },
+        }
+      : {};
     // O Slot exige um só filho: o indicador entra dentro dele através do Slottable.
     return (
       <Slot.Root
@@ -111,8 +132,8 @@ function Button({
         data-variant={variant}
         className={classes}
         aria-busy={loading || undefined}
-        aria-disabled={loading || disabled || undefined}
         {...props}
+        {...inertProps}
       >
         {loading && <Spinner />}
         <Slot.Slottable>{children}</Slot.Slottable>
