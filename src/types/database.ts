@@ -95,6 +95,66 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"categories": {
+                  Row: {
+                    "created_at": string,"id": string,"is_visible": boolean,"name": string,"position": number,"slug": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"is_visible"?: boolean,"name": string,"position"?: number,"slug": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"is_visible"?: boolean,"name"?: string,"position"?: number,"slug"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"product_images": {
+                  Row: {
+                    "id": string,"path": string,"position": number,"product_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "id"?: string,"path": string,"position": number,"product_id": string
+                  }
+                  Update: {
+                    "id"?: string,"path"?: string,"position"?: number,"product_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "product_images_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"products": {
+                  Row: {
+                    "category_id": string,"created_at": string,"description": string,"id": string,"is_published": boolean,"moderation_reason": string | null,"moderation_status": Database["public"]['Enums']["moderation_status"],"name": string,"price_kz": number,"stock": number,"store_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "category_id": string,"created_at"?: string,"description"?: string,"id"?: string,"is_published"?: boolean,"moderation_reason"?: string | null,"moderation_status"?: Database["public"]['Enums']["moderation_status"],"name": string,"price_kz": number,"stock": number,"store_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "category_id"?: string,"created_at"?: string,"description"?: string,"id"?: string,"is_published"?: boolean,"moderation_reason"?: string | null,"moderation_status"?: Database["public"]['Enums']["moderation_status"],"name"?: string,"price_kz"?: number,"stock"?: number,"store_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "products_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "products_store_id_fkey"
+      columns: ["store_id"]
+isOneToOne: false
+      referencedRelation: "stores"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"profiles": {
                   Row: {
                     "affiliation": Database["public"]['Enums']["affiliation"],"created_at": string,"full_name": string,"id": string,"phone": string,"terms_accepted_at": string,"updated_at": string
@@ -109,6 +169,32 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"stores": {
+                  Row: {
+                    "category_id": string,"cover_path": string | null,"created_at": string,"decided_at": string | null,"decided_by": string | null,"description": string,"id": string,"logo_path": string | null,"name": string,"owner_id": string,"published_products_count": number,"rating_avg": number | null,"rating_count": number,"slug": string,"status": Database["public"]['Enums']["store_status"],"submitted_at": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "category_id": string,"cover_path"?: string | null,"created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"description"?: string,"id"?: string,"logo_path"?: string | null,"name": string,"owner_id": string,"published_products_count"?: number,"rating_avg"?: number | null,"rating_count"?: number,"slug": string,"status"?: Database["public"]['Enums']["store_status"],"submitted_at"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "category_id"?: string,"cover_path"?: string | null,"created_at"?: string,"decided_at"?: string | null,"decided_by"?: string | null,"description"?: string,"id"?: string,"logo_path"?: string | null,"name"?: string,"owner_id"?: string,"published_products_count"?: number,"rating_avg"?: number | null,"rating_count"?: number,"slug"?: string,"status"?: Database["public"]['Enums']["store_status"],"submitted_at"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "stores_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stores_owner_id_fkey"
+      columns: ["owner_id"]
+isOneToOne: true
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
@@ -122,7 +208,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "academic_option_kind": "course"|"curricular_year"|"shift"|"class_group","affiliation": "student"|"teacher"|"staff"
+            "academic_option_kind": "course"|"curricular_year"|"shift"|"class_group","affiliation": "student"|"teacher"|"staff","moderation_status": "visible"|"hidden","store_status": "draft"|"pending_approval"|"approved"|"rejected"|"suspended"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -242,7 +328,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "academic_option_kind": ["course", "curricular_year", "shift", "class_group"],"affiliation": ["student", "teacher", "staff"]
+            "academic_option_kind": ["course", "curricular_year", "shift", "class_group"],"affiliation": ["student", "teacher", "staff"],"moderation_status": ["visible", "hidden"],"store_status": ["draft", "pending_approval", "approved", "rejected", "suspended"]
           }
         }
 } as const
