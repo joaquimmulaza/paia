@@ -25,7 +25,7 @@
     // `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
     // without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
     // instead. Left unset, a fresh project falls back to `true`.
-    // "auto_expose_new_tables": true,
+    "auto_expose_new_tables": false,
 
     "tls": {
       // Enable HTTPS endpoints locally using a self-signed certificate.
@@ -260,10 +260,10 @@
       // If enabled, users need to confirm their email address before signing in.
       "enable_confirmations": false,
       // If enabled, users will need to reauthenticate or have logged in recently to change their password.
-      "secure_password_change": false,
+      "secure_password_change": true,
       // If enabled, users will need to provide their current password to change their password, unless
       // they signed in with a one-time password, magic link, or recovery link.
-      // "require_current_password": true,
+      "require_current_password": true,
       // Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
       "max_frequency": "1s",
       // Number of characters used in the email OTP.

@@ -25,14 +25,14 @@ export type Database = {
           Tables: {
             "academic_info": {
                   Row: {
-                    "class_group": string,"class_option_id": string | null,"course": string,"course_option_id": string | null,"curricular_year": string,"curricular_year_option_id": string | null,"shift": string,"shift_option_id": string | null,"updated_at": string,"user_id": string
+                    "affiliation": Database["public"]['Enums']["affiliation"],"class_group": string,"class_option_id": string | null,"course": string,"course_option_id": string | null,"created_at": string,"curricular_year": string,"curricular_year_option_id": string | null,"shift": string,"shift_option_id": string | null,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "class_group": string,"class_option_id"?: string | null,"course": string,"course_option_id"?: string | null,"curricular_year": string,"curricular_year_option_id"?: string | null,"shift": string,"shift_option_id"?: string | null,"updated_at"?: string,"user_id": string
+                    "affiliation"?: Database["public"]['Enums']["affiliation"],"class_group": string,"class_option_id"?: string | null,"course": string,"course_option_id"?: string | null,"created_at"?: string,"curricular_year": string,"curricular_year_option_id"?: string | null,"shift": string,"shift_option_id"?: string | null,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "class_group"?: string,"class_option_id"?: string | null,"course"?: string,"course_option_id"?: string | null,"curricular_year"?: string,"curricular_year_option_id"?: string | null,"shift"?: string,"shift_option_id"?: string | null,"updated_at"?: string,"user_id"?: string
+                    "affiliation"?: Database["public"]['Enums']["affiliation"],"class_group"?: string,"class_option_id"?: string | null,"course"?: string,"course_option_id"?: string | null,"created_at"?: string,"curricular_year"?: string,"curricular_year_option_id"?: string | null,"shift"?: string,"shift_option_id"?: string | null,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -60,23 +60,23 @@ isOneToOne: false
       referencedRelation: "academic_options"
       referencedColumns: ["id"]
     },{
-      foreignKeyName: "academic_info_user_id_fkey"
-      columns: ["user_id"]
-isOneToOne: true
+      foreignKeyName: "academic_info_user_id_affiliation_fkey"
+      columns: ["user_id","affiliation"]
+isOneToOne: false
       referencedRelation: "profiles"
-      referencedColumns: ["id"]
+      referencedColumns: ["id","affiliation"]
     }
                   ]
                 },"academic_options": {
                   Row: {
-                    "id": string,"is_active": boolean,"kind": Database["public"]['Enums']["academic_option_kind"],"label": string,"position": number
+                    "created_at": string,"id": string,"is_active": boolean,"kind": Database["public"]['Enums']["academic_option_kind"],"label": string,"position": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "id"?: string,"is_active"?: boolean,"kind": Database["public"]['Enums']["academic_option_kind"],"label": string,"position"?: number
+                    "created_at"?: string,"id"?: string,"is_active"?: boolean,"kind": Database["public"]['Enums']["academic_option_kind"],"label": string,"position"?: number,"updated_at"?: string
                   }
                   Update: {
-                    "id"?: string,"is_active"?: boolean,"kind"?: Database["public"]['Enums']["academic_option_kind"],"label"?: string,"position"?: number
+                    "created_at"?: string,"id"?: string,"is_active"?: boolean,"kind"?: Database["public"]['Enums']["academic_option_kind"],"label"?: string,"position"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     
