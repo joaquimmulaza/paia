@@ -3,6 +3,7 @@ import { ProfilePage } from '@/features/auth/ProfilePage';
 import { SignInPage } from '@/features/auth/SignInPage';
 import { SignUpPage } from '@/features/auth/SignUpPage';
 import { RequireAuth, RequireGuest } from './guards';
+import { NotFoundPage } from './NotFoundPage';
 import { PlaceholderPage } from './PlaceholderPage';
 import { routerFuture } from './router-future';
 
@@ -35,6 +36,7 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
   },
+  { path: '*', element: <NotFoundPage /> },
 ];
 
 export function createAppRouter() {

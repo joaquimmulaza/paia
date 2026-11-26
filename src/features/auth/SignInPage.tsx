@@ -102,7 +102,7 @@ export function SignInPage() {
                     size="sm"
                     aria-label={showPassword ? 'Esconder palavra-passe' : 'Mostrar palavra-passe'}
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute top-1 right-1 text-ink"
+                    className="absolute top-1 right-1 min-w-11 text-ink"
                   >
                     {showPassword ? 'Esconder' : 'Mostrar'}
                   </Button>

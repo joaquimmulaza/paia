@@ -68,6 +68,27 @@ describe('AuthProvider', () => {
     expect(await screen.findByText('sem sessão')).toBeInTheDocument();
   });
 
+  it('onUserChange corre quando o utilizador muda (sair, entrar com outro), não no refresh do token', async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+    const onUserChange = vi.fn();
+    render(
+      <AuthProvider onUserChange={onUserChange}>
+        <Probe />
+      </AuthProvider>,
+    );
+    await screen.findByText('com sessão');
+    expect(onUserChange).not.toHaveBeenCalled();
+
+    act(() => mocks.state.listener?.('TOKEN_REFRESHED', { user: { id: 'u1' } }));
+    expect(onUserChange).not.toHaveBeenCalled();
+
+    act(() => mocks.state.listener?.('SIGNED_OUT', null));
+    expect(onUserChange).toHaveBeenCalledTimes(1);
+
+    act(() => mocks.state.listener?.('SIGNED_IN', { user: { id: 'u2' } }));
+    expect(onUserChange).toHaveBeenCalledTimes(2);
+  });
+
   it('useAuth fora do provider lança', () => {
     // O React volta a lançar o erro no window; silencia o ruído sem esconder a asserção.
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
