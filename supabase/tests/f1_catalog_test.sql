@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(263);
+select plan(272);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se os
 -- destaques, as lojas, os produtos e as imagens que o seed criou (o rollback
@@ -933,7 +933,10 @@ values
    null, now() - interval '1 day'),
   -- Um destaque pago na mesma loja que um admin: a loja aparece uma só vez.
   ('a2000000-0000-0000-0000-000000000012', 'a1000000-0000-0000-0000-000000000001', 'paid', 4, null, null, true,
-   null, now() - interval '3 days');
+   null, now() - interval '3 days'),
+  -- Desligado, de uma loja pendente: não pode ser religado.
+  ('a2000000-0000-0000-0000-000000000014', 'a1000000-0000-0000-0000-000000000007', 'admin', 0, null, null, false,
+   null, now());
 
 -- CHECKs e índice único.
 select throws_ok(
@@ -1109,10 +1112,20 @@ select throws_ok(
 select throws_ok(
   format($$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', 0, null, null, %L) $$,
          repeat('n', 281)),
-  '23514', null, '(m) uma nota com mais de 280 caracteres é recusada');
+  'P0001', 'INVALID_TEXT', '(m) uma nota com mais de 280 caracteres dá INVALID_TEXT, antes da escrita');
+select lives_ok(
+  format($$ select public.admin_save_store_feature(%L, 'a1000000-0000-0000-0000-000000000008', null, null, null, %L) $$,
+         current_setting('test.f_new'), '  ' || repeat('n', 280) || '  '),
+  '(m) uma nota com 280 caracteres depois de normalizada é aceite');
+select is(
+  (select position from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid),
+  0, '(m) p_position nulo ao alterar mantém a posição');
 select throws_ok(
   $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', 0, null, null, E'Nota\x01') $$,
-  '23514', 'INVALID_TEXT', '(m) uma nota com caracteres de controlo dá INVALID_TEXT');
+  'P0001', 'INVALID_TEXT', '(m) uma nota com caracteres de controlo dá INVALID_TEXT, antes da escrita');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000005', -1, null, null, null) $$,
+  'P0001', 'INVALID_POSITION', '(m) uma posição negativa dá INVALID_POSITION');
 
 -- Ativar e desativar.
 select lives_ok(
@@ -1143,6 +1156,28 @@ select lives_ok(
 select lives_ok(
   $$ select public.admin_set_store_feature_active(current_setting('test.f_new')::uuid, true) $$,
   '(m) admin_set_store_feature_active reativa');
+select is(
+  (select position from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid),
+  (select max(position) + 1 from public.admin_list_store_features()
+    where is_active and id <> current_setting('test.f_new')::uuid),
+  '(m) um destaque reativado vai para o fim da ordem');
+select lives_ok(
+  $$ select public.admin_set_store_feature_active(current_setting('test.f_new')::uuid, true) $$,
+  '(m) ativar outra vez não falha (idempotente)');
+select is(
+  (select position from public.admin_list_store_features() where id = current_setting('test.f_new')::uuid),
+  (select max(position) + 1 from public.admin_list_store_features()
+    where is_active and id <> current_setting('test.f_new')::uuid),
+  '(m) ativar outra vez não muda a posição');
+select throws_ok(
+  $$ select public.admin_set_store_feature_active('a2000000-0000-0000-0000-000000000014', true) $$,
+  'P0001', 'STORE_NOT_APPROVED', '(m) ligar um destaque de uma loja não aprovada dá STORE_NOT_APPROVED');
+select is(
+  (select is_active from public.admin_list_store_features() where id = 'a2000000-0000-0000-0000-000000000014'),
+  false, '(m) o destaque da loja não aprovada continua desligado');
+select lives_ok(
+  $$ select public.admin_set_store_feature_active('a2000000-0000-0000-0000-000000000006', false) $$,
+  '(m) desligar um destaque de uma loja suspensa é permitido');
 select ok(
   exists (select 1 from public.list_featured_stores() where slug = 'destaque-livre'),
   '(m) o destaque reativado volta a list_featured_stores');
@@ -1162,8 +1197,9 @@ select is(
   (select array_agg(position order by position) from public.admin_list_store_features() where is_active),
   (select array_agg(g - 1) from generate_series(1, cardinality(current_setting('test.order')::uuid[])) g),
   '(m) position é o índice no array, a contar de 0');
+-- O array inverte a ordem: o primeiro é o que estava no fim (o reativado).
 select is(
-  (select slug from public.list_featured_stores() limit 1), 'destaque-inicio-agora',
+  (select slug from public.list_featured_stores() limit 1), 'destaque-livre',
   '(m) list_featured_stores segue a nova ordem');
 
 select throws_ok(

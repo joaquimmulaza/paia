@@ -631,9 +631,9 @@ on conflict (id) do update
 --     * Sem leitura direta pelo cliente: RLS ligada, sem políticas nem grants
 --       para anon e authenticated. Lê-se por list_featured_stores (público)
 --       e admin_list_store_features (administração).
---     * Um destaque está no ar quando is_active e now() está dentro de
---       [starts_at, ends_at), sendo que um limite nulo não limita, e a loja
---       está approved. A regra do período vive só em private.feature_is_live.
+--     * Um destaque é elegível para C01 quando is_active, now() está dentro
+--       de [starts_at, ends_at) (um limite nulo não limita) e a loja está
+--       approved. A regra vive só em private.feature_is_shown.
 -- ---------------------------------------------------------------------------
 create type public.feature_source as enum ('admin', 'paid');
 
@@ -678,26 +678,31 @@ create trigger normalize_text_fields
 alter table public.store_features enable row level security;
 grant select, insert, update, delete on public.store_features to service_role;
 
--- O período e o estado do próprio destaque (a loja aprovada verifica-se à
--- parte, por quem chama). now() é a hora da transação.
-create function private.feature_is_live(f public.store_features)
+-- A única definição de «elegível para C01»: destaque ativo, dentro do
+-- período e de uma loja approved. now() é a hora da transação. Não conta com
+-- o limite de 10 nem com a regra de uma linha por loja de list_featured_stores.
+create function private.feature_is_shown(f public.store_features, p_store_status public.store_status)
 returns boolean
 language sql
 stable
 set search_path = ''
 as $$
-  select f.is_active
+  select p_store_status = 'approved'
+     and f.is_active
      and (f.starts_at is null or f.starts_at <= now())
      and (f.ends_at is null or now() < f.ends_at);
 $$;
-revoke execute on function private.feature_is_live(public.store_features) from public, anon, authenticated;
+revoke execute on function private.feature_is_shown(public.store_features, public.store_status)
+  from public, anon, authenticated;
 
 -- Lojas em destaque para C01, no máximo 10. SECURITY DEFINER porque anon não
--- lê store_features; por isso filtra ele próprio a loja approved e as
--- categorias visíveis (como as RLS fariam em list_stores). Devolve as colunas
--- de list_stores e source, nunca note, created_by nem updated_by. Uma loja
--- com mais de um destaque no ar (admin e paid) aparece uma só vez, com o de
--- menor position.
+-- lê store_features; por isso filtra ele próprio a elegibilidade
+-- (feature_is_shown, que inclui a loja approved) e as categorias visíveis
+-- (como as RLS fariam em list_stores). Devolve as colunas de list_stores e
+-- source, nunca note, created_by nem updated_by. Uma loja com mais de um
+-- destaque elegível (admin e paid) aparece uma só vez, com o de menor
+-- position. Esta precedência entre paid e admin é provisória: decide-se com a
+-- promoção paga.
 create function public.list_featured_stores()
 returns table (
   id uuid,
@@ -727,8 +732,7 @@ as $$
         from public.store_features f
         join public.stores s on s.id = f.store_id
         left join public.categories c on c.id = s.category_id and c.is_visible
-       where s.status = 'approved'
-         and private.feature_is_live(f)
+       where private.feature_is_shown(f, s.status)
        order by s.id, f.position, f.created_at, f.id
     ) l
    order by l.position, l.feature_created_at, l.feature_id
@@ -745,8 +749,15 @@ grant execute on function public.list_featured_stores() to anon, authenticated;
 --       NOT_FOUND, como um id que não existe.
 --     * Erros (P0001): NOT_ALLOWED, NOT_FOUND, STORE_NOT_APPROVED,
 --       INVALID_PERIOD e FEATURE_EXISTS. A nota segue as regras das outras
---       colunas de texto (trigger: INVALID_TEXT; CHECK: até 280 caracteres).
+--       colunas de texto, validada antes da escrita (INVALID_TEXT); a posição
+--       também (INVALID_POSITION). O trigger e os CHECKs ficam como última
+--       barreira.
+--     * Lojas: guardar e ligar bloqueiam a linha da loja FOR SHARE e exigem
+--       approved, para a loja não mudar de estado a meio.
 -- ---------------------------------------------------------------------------
+-- is_live quer dizer «elegível para C01» (private.feature_is_shown: loja
+-- approved, ativo e dentro do período). Não conta com o limite de 10 nem com
+-- a regra de uma linha por loja de list_featured_stores.
 create function public.admin_list_store_features()
 returns table (
   id uuid,
@@ -775,7 +786,7 @@ begin
 
   return query
     select f.id, f.store_id, s.name, s.slug, s.status, f.source, f.position, f.starts_at, f.ends_at,
-           f.is_active, f.note, (s.status = 'approved' and private.feature_is_live(f))
+           f.is_active, f.note, private.feature_is_shown(f, s.status)
       from public.store_features f
       join public.stores s on s.id = f.store_id
      where f.source = 'admin'
@@ -792,6 +803,8 @@ grant execute on function public.admin_list_store_features() to authenticated;
 --   tenha um ativo.
 -- * p_position nulo: 0 ao criar, a posição atual ao alterar.
 -- * Uma nota vazia ou só com espaços fica nula.
+-- * Toda a entrada é validada antes de qualquer escrita, para nenhum 23514
+--   cru chegar ao cliente.
 create function public.admin_save_store_feature(
   p_id uuid,
   p_store_id uuid,
@@ -807,12 +820,21 @@ set search_path = ''
 as $$
 declare
   v_uid uuid := (select auth.uid());
-  v_note text := nullif(private.normalize_text(p_note), '');
+  v_note text;
   v_id uuid;
   v_constraint text;
 begin
   if not (select private.is_admin()) then
     raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  if p_position is not null and p_position < 0 then
+    raise exception using errcode = 'P0001', message = 'INVALID_POSITION';
+  end if;
+
+  v_note := nullif(private.normalize_text(p_note), '');
+  if v_note is not null and (char_length(v_note) > 280 or v_note ~ '[[:cntrl:]]') then
+    raise exception using errcode = 'P0001', message = 'INVALID_TEXT';
   end if;
 
   if p_starts_at is not null and p_ends_at is not null and p_ends_at <= p_starts_at then
@@ -826,7 +848,8 @@ begin
     end if;
   end if;
 
-  if not exists (select 1 from public.stores s where s.id = p_store_id and s.status = 'approved') then
+  perform 1 from public.stores s where s.id = p_store_id and s.status = 'approved' for share;
+  if not found then
     raise exception using errcode = 'P0001', message = 'STORE_NOT_APPROVED';
   end if;
 
@@ -843,7 +866,7 @@ begin
              ends_at = p_ends_at,
              note = v_note,
              updated_by = v_uid
-       where f.id = p_id
+       where f.id = p_id and f.source = 'admin'
       returning f.id into v_id;
     end if;
   exception when unique_violation then
@@ -863,7 +886,9 @@ grant execute on function public.admin_save_store_feature(uuid, uuid, integer, t
   to authenticated;
 
 -- Liga ou desliga um destaque admin. Idempotente: pedir o estado que já tem
--- não escreve nada. Ligar um destaque de uma loja que já tem outro ativo dá
+-- não escreve nada. Ligar exige a loja approved (STORE_NOT_APPROVED) e põe o
+-- destaque no fim da ordem dos destaques admin ativos; desligar é sempre
+-- permitido. Ligar um destaque de uma loja que já tem outro ativo dá
 -- FEATURE_EXISTS.
 create function public.admin_set_store_feature_active(p_id uuid, p_active boolean)
 returns void
@@ -873,13 +898,15 @@ set search_path = ''
 as $$
 declare
   v_current boolean;
+  v_store_id uuid;
+  v_position integer;
   v_constraint text;
 begin
   if not (select private.is_admin()) then
     raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
   end if;
 
-  select f.is_active into v_current
+  select f.is_active, f.store_id, f.position into v_current, v_store_id, v_position
     from public.store_features f
    where f.id = p_id and f.source = 'admin'
      for update;
@@ -891,11 +918,23 @@ begin
     return;
   end if;
 
+  if p_active then
+    perform 1 from public.stores s where s.id = v_store_id and s.status = 'approved' for share;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'STORE_NOT_APPROVED';
+    end if;
+
+    select coalesce(max(f.position) + 1, 0) into v_position
+      from public.store_features f
+     where f.source = 'admin' and f.is_active and f.id <> p_id;
+  end if;
+
   begin
     update public.store_features f
        set is_active = p_active,
+           position = v_position,
            updated_by = (select auth.uid())
-     where f.id = p_id;
+     where f.id = p_id and f.source = 'admin';
   exception when unique_violation then
     get stacked diagnostics v_constraint = constraint_name;
     if v_constraint = 'store_features_one_active_idx' then
