@@ -17,6 +17,7 @@ import { StoreLink } from './components/StoreLink';
 import { useCategories, useProducts, useStores } from './queries';
 import { parseExploreParams, toExploreSearch, type ExploreParams } from './search-params';
 import type { ProductSort } from './types';
+import { useLoadMoreFocus } from './use-load-more-focus';
 import { useSearchText } from './use-search-text';
 
 const MAX_STORES = 3;
@@ -122,26 +123,16 @@ export function ExplorePage() {
 
   // «Ver mais produtos»: quando os novos itens chegam, o foco passa para o primeiro deles.
   const listRef = useRef<HTMLUListElement>(null);
-  // O pedido fica preso à pesquisa em que foi feito: se falha ou a pesquisa muda, esquece-se.
-  const focusTarget = useRef<{ index: number; key: string } | null>(null);
+  const markLoadMore = useLoadMoreFocus(
+    listRef,
+    items.length,
+    searchKey,
+    products.isFetchNextPageError,
+  );
   function loadMore() {
-    focusTarget.current = { index: items.length, key: searchKey };
+    markLoadMore();
     void products.fetchNextPage();
   }
-  useEffect(() => {
-    if (products.isFetchNextPageError) focusTarget.current = null;
-  }, [products.isFetchNextPageError]);
-  useEffect(() => {
-    const target = focusTarget.current;
-    if (!target) return;
-    if (target.key !== searchKey) {
-      focusTarget.current = null;
-      return;
-    }
-    if (items.length <= target.index) return;
-    focusTarget.current = null;
-    listRef.current?.children[target.index]?.querySelector('a')?.focus();
-  }, [items.length, searchKey]);
 
   // «Procurar em tudo»: o botão desaparece, por isso o foco passa para o resultado da pesquisa
   // alargada (a contagem ou, se continuar vazia, o título do estado vazio). Sem novo anúncio:

@@ -20,6 +20,16 @@ const ratingFormat = new Intl.NumberFormat('pt-AO', {
   maximumFractionDigits: 1,
 });
 
+/** «4,8». */
+export function formatRating(avg: number): string {
+  return ratingFormat.format(avg);
+}
+
+/** «23 avaliações», «1 avaliação». */
+export function ratingCount(count: number): string {
+  return `${count} ${count === 1 ? 'avaliação' : 'avaliações'}`;
+}
+
 /**
  * Meta da loja: «Doces · 12 produtos», mais « · 4,8» com avaliações.
  * Com `noRatingText`, acrescenta esse texto quando ainda não há avaliações.
@@ -28,7 +38,7 @@ export function storeMeta(store: StoreSummary, noRatingText?: string): string {
   const parts: string[] = [];
   if (store.categoryName) parts.push(store.categoryName);
   parts.push(`${store.productCount} ${store.productCount === 1 ? 'produto' : 'produtos'}`);
-  if (store.rating && store.rating.count > 0) parts.push(ratingFormat.format(store.rating.avg));
+  if (store.rating && store.rating.count > 0) parts.push(formatRating(store.rating.avg));
   else if (noRatingText) parts.push(noRatingText);
   return parts.join(' · ');
 }

@@ -7,6 +7,8 @@ import { cn, focusRing } from '@/lib/utils';
 type AppHeaderProps = {
   /** Destino do botão Voltar. Sem ele, não há botão. */
   back?: string;
+  /** Um botão próprio à esquerda, em vez da ligação `back` (por exemplo, um Voltar que usa o histórico). */
+  start?: ReactNode;
   /** Título do ecrã, como o h1 da página. */
   title?: string;
   /** Mostra o logótipo (30 px). */
@@ -15,7 +17,7 @@ type AppHeaderProps = {
   actions?: ReactNode;
 };
 
-export function AppHeader({ back, title, logo = false, actions }: AppHeaderProps) {
+export function AppHeader({ back, start, title, logo = false, actions }: AppHeaderProps) {
   return (
     <header className="flex items-center justify-between gap-3 px-5 py-3.5">
       {back && (
@@ -31,6 +33,7 @@ export function AppHeader({ back, title, logo = false, actions }: AppHeaderProps
           <ChevronLeft aria-hidden="true" className="size-6" />
         </Link>
       )}
+      {start}
       {logo && (
         <img src="/logo.png" alt="PAIÁ" className="block h-[30px] w-auto mix-blend-multiply" />
       )}
