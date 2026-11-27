@@ -2,7 +2,7 @@
 
 > **Este ficheiro é a memória comum entre agentes** (Cursor, Antigravity, Claude Code). Cada agente atualiza-o **no fim de cada tarefa, no mesmo commit da tarefa**, como descreve o [`AGENTS.md`](../AGENTS.md). Não reescrevas linhas antigas: se uma decisão mudar, acrescenta uma linha nova que a substitui.
 >
-> **Última atualização:** 2026-11-27, com `main` em `1dd55b4` (F1 junto).
+> **Última atualização:** 2026-11-27, com `main` em `f7c4cf4` (F1 junto, com os estados do A07 desenhados).
 
 ## Agora
 
@@ -40,7 +40,7 @@
 | 8. Verificação completa, ponta a ponta e axe        | `acf2be0`                   |
 | Revisão final e correções                           | `b48c556`                   |
 
-### F1 · Catálogo (`c1de97a..1dd55b4`)
+### F1 · Catálogo (`c1de97a..f7c4cf4`)
 
 Os hashes são os de `main`; o branch `f1-catalogo` tem os mesmos commits com outros hashes.
 
@@ -58,8 +58,9 @@ Os hashes são os de `main`; o branch `f1-catalogo` tem os mesmos commits com ou
 | 10. Administração e ecrã Destaques (A07)                       | `475ef29`, `d27106e`   |
 | 11. Ponta a ponta, acessibilidade e verificação                | `ce49132`, `5d20a5b`   |
 | Revisão final e correções                                      | `a349ced`, `134b9c5`, `1dd55b4` |
+| Estados, avisos e ligação «Administração» desenhados (A07b, A07c, K03b) e alinhados | `f7c4cf4` |
 
-Última verificação completa: `npm run verify` com os 10 passos a passar: 473 testes Vitest, 344 pgTAP e 13 ponta a ponta, com axe sem violações.
+Última verificação completa: `npm run verify` com os 10 passos a passar: 476 testes Vitest, 344 pgTAP e 13 ponta a ponta, com axe sem violações.
 
 ## Decisões
 
@@ -72,6 +73,8 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 - Ruling: o `supabase/config.jsonc` (formato da CLI 3.4) substitui o `config.toml`.
 - Ruling: `edge_runtime` está desligado localmente — a imagem estava corrompida; volta a ligar com a primeira Edge Function.
 - Ruling: zod 4 em vez do zod 3 do plano — o zod 3 tinha um aviso de segurança alto sem correção.
+- Ruling: o que não estiver desenhado (ecrã, estado, aviso ou texto) é desenhado primeiro no Claude Design, no canvas dos ecrãs, e só depois implementado — regra do responsável; os estados do A07 que tinham ido para o código sem desenho foram desenhados depois (A07b, A07c, K03b) e o código alinhado.
+- Ruling: `.claude/` fica fora do ESLint e do Prettier — as worktrees que a app cria lá dentro partiam o `npm run verify`.
 - Ruling: o React fica no 18.3; os componentes shadcn podem ser escritos à mão quando a CLI os não oferece para React 18.
 - Ruling: os testes e2e correm com `workers: 1` e repõem exatamente o estado do seed no fim — a instabilidade do e2e custaria cada `verify` seguinte.
 - Ruling: o `Button` tem `type="button"` por omissão — os formulários têm de passar `type="submit"`.
