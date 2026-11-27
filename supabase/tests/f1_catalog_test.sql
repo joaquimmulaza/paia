@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(272);
+select plan(283);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se os
 -- destaques, as lojas, os produtos e as imagens que o seed criou (o rollback
@@ -1281,6 +1281,63 @@ select ok(
   not exists (select 1 from public.list_featured_stores() where slug = 'destaque-periodo-atual'),
   '(m) o destaque de uma loja que passou a suspended não aparece');
 reset role;
+
+-- Destaque terminado ainda ativo: criar outro para a mesma loja desliga o
+-- terminado na mesma transação e põe o novo no fim da ordem. Um destaque no
+-- ar ou agendado continua a dar FEATURE_EXISTS.
+select pg_temp.as_user('10000000-0000-0000-0000-000000000009');
+set local role authenticated;
+select set_config('test.end_before',
+  (select coalesce(max(position) + 1, 0) from public.admin_list_store_features()
+    where is_active and id <> 'a2000000-0000-0000-0000-000000000003')::text, true);
+select set_config('test.f_refeature',
+  public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000003', null, null, null, null)::text, true);
+select is(
+  (select is_active from public.admin_list_store_features() where id = 'a2000000-0000-0000-0000-000000000003'),
+  false, '(m) criar um destaque para uma loja com destaque terminado desliga o terminado');
+select results_eq(
+  $$ select is_active, is_live from public.admin_list_store_features() where id = current_setting('test.f_refeature')::uuid $$,
+  $$ values (true, true) $$, '(m) o novo destaque da loja com destaque terminado fica ativo e no ar');
+select is(
+  (select position from public.admin_list_store_features() where id = current_setting('test.f_refeature')::uuid),
+  current_setting('test.end_before')::int,
+  '(m) sem posição, o destaque criado vai para o fim da ordem dos ativos');
+select lives_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000009', null, null, null, null) $$,
+  '(m) um destaque que terminou exatamente agora (ends_at = now()) também é substituído');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000002', null, null, null, null) $$,
+  'P0001', 'FEATURE_EXISTS', '(m) uma loja com destaque no ar (dentro do período) dá FEATURE_EXISTS');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000004', null, null, null, null) $$,
+  'P0001', 'FEATURE_EXISTS', '(m) uma loja com destaque agendado dá FEATURE_EXISTS');
+select results_eq(
+  $$ select id, is_active from public.admin_list_store_features()
+      where id in ('a2000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000004') order by id $$,
+  $$ values ('a2000000-0000-0000-0000-000000000002'::uuid, true), ('a2000000-0000-0000-0000-000000000004'::uuid, true) $$,
+  '(m) os destaques no ar e agendados continuam ativos');
+select throws_ok(
+  $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000003', null, null, null, null) $$,
+  'P0001', 'FEATURE_EXISTS', '(m) repetir a criação depois de substituir o terminado dá FEATURE_EXISTS');
+select is(
+  (select count(*)::int from public.store_features where store_id = 'a1000000-0000-0000-0000-000000000003'),
+  2, '(m) a criação repetida não escreveu nada');
+reset role;
+
+-- Posições: as três funções que as atribuem tomam o mesmo trinco de
+-- transação antes de ler max(position), para duas ativações ao mesmo tempo
+-- não ficarem com a mesma posição.
+select ok(
+  (select bool_and(pg_get_functiondef(p.oid) like '%pg_advisory_xact_lock(%hashtext(''public.store_features:admin_position'')%')
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('admin_save_store_feature', 'admin_set_store_feature_active', 'admin_reorder_store_features')),
+  '(m) save, set_active e reorder serializam as posições com o mesmo trinco');
+select ok(
+  exists (select 1 from pg_locks l
+           where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted
+             and l.objid = (hashtext('public.store_features:admin_position')::bigint & 4294967295)::oid),
+  '(m) o trinco das posições fica preso até ao fim da transação');
 
 -- No máximo 10 destaques.
 select pg_temp.signup(('10000000-0000-0000-0000-0000000002' || lpad(g::text, 2, '0'))::uuid,
