@@ -90,6 +90,22 @@ describe('ProfilePage (K03)', () => {
     expect(toast).toHaveBeenCalledWith('Disponível em breve');
   });
 
+  it('um administrador vê a ligação «Administração» para /admin/destaques', async () => {
+    api.getMyProfile.mockResolvedValue({ ...student, isAdmin: true });
+    mount();
+    expect(await screen.findByRole('link', { name: 'Administração' })).toHaveAttribute(
+      'href',
+      '/admin/destaques',
+    );
+  });
+
+  it('quem não é administrador não vê a ligação «Administração»', async () => {
+    api.getMyProfile.mockResolvedValue(student);
+    mount();
+    await screen.findByText('Teste da Silva Estudante');
+    expect(screen.queryByRole('link', { name: 'Administração' })).toBeNull();
+  });
+
   it('Terminar sessão chama signOut local e vai para /entrar', async () => {
     const user = userEvent.setup({ delay: null });
     api.getMyProfile.mockResolvedValue(student);

@@ -12,6 +12,8 @@ export const tagClass = {
   /** Categoria (p-tag--neutral): fundo surface, texto e contorno ink. */
   neutral: cn(base, 'border-ink bg-surface text-ink'),
   done: cn(base, 'bg-success-tint text-success'),
+  /** p-tag--accepted: em info. */
+  accepted: cn(base, 'bg-info-tint text-info'),
   /** «Promovida» (X01): fundo surface, texto e contorno ink. Nunca verde. */
   promoted: cn(base, 'border-ink bg-surface text-ink'),
 };

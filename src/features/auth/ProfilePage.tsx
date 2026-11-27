@@ -1,7 +1,7 @@
 // Ecrã K03 · Perfil (só o que tem destino na F0).
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/paia/AppHeader';
 import { PageShell } from '@/components/paia/PageShell';
@@ -121,6 +121,13 @@ function ProfileDetails({ profile }: { profile: MyProfile }) {
 
       {/* Só estudantes podem pedir uma loja (context.md, secção 4). */}
       {profile.affiliation === 'student' && <ShopCard />}
+
+      {/* Só para a experiência: as funções da administração verificam is_admin. */}
+      {profile.isAdmin && (
+        <Button asChild variant="secondary" className="w-full">
+          <Link to="/admin/destaques">Administração</Link>
+        </Button>
+      )}
     </>
   );
 }
