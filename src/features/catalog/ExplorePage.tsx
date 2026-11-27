@@ -106,7 +106,13 @@ export function ExplorePage() {
     sort: ordem,
   });
   const items = products.data?.pages.flatMap((p) => p.items) ?? [];
-  const empty = products.isSuccess && items.length === 0;
+  // Com categoria, a contagem e o título esperam pelo nome dela: anunciar o texto sem ele e
+  // logo a seguir com ele faria o leitor de ecrã ler duas vezes.
+  const waitingName = Boolean(categoria) && categories.isPending;
+  const ready = products.isSuccess && !waitingName;
+  const empty = ready && items.length === 0;
+  const holding = products.isSuccess && items.length === 0 && waitingName;
+  const searchKey = `${q}|${categoria ?? ''}|${ordem}`;
 
   const [attempt, setAttempt] = useState(0);
   function retry() {
@@ -116,17 +122,42 @@ export function ExplorePage() {
 
   // «Ver mais produtos»: quando os novos itens chegam, o foco passa para o primeiro deles.
   const listRef = useRef<HTMLUListElement>(null);
-  const focusIndex = useRef<number | null>(null);
+  // O pedido fica preso à pesquisa em que foi feito: se falha ou a pesquisa muda, esquece-se.
+  const focusTarget = useRef<{ index: number; key: string } | null>(null);
   function loadMore() {
-    focusIndex.current = items.length;
+    focusTarget.current = { index: items.length, key: searchKey };
     void products.fetchNextPage();
   }
   useEffect(() => {
-    const index = focusIndex.current;
-    if (index === null || items.length <= index) return;
-    focusIndex.current = null;
-    listRef.current?.children[index]?.querySelector('a')?.focus();
-  }, [items.length]);
+    if (products.isFetchNextPageError) focusTarget.current = null;
+  }, [products.isFetchNextPageError]);
+  useEffect(() => {
+    const target = focusTarget.current;
+    if (!target) return;
+    if (target.key !== searchKey) {
+      focusTarget.current = null;
+      return;
+    }
+    if (items.length <= target.index) return;
+    focusTarget.current = null;
+    listRef.current?.children[target.index]?.querySelector('a')?.focus();
+  }, [items.length, searchKey]);
+
+  // «Procurar em tudo»: o botão desaparece, por isso o foco passa para o resultado da pesquisa
+  // alargada (a contagem ou, se continuar vazia, o título do estado vazio). Sem novo anúncio:
+  // a contagem já é a região status.
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const emptyTitleRef = useRef<HTMLHeadingElement>(null);
+  const [widenedKey, setWidenedKey] = useState<string | null>(null);
+  function searchEverywhere() {
+    setWidenedKey(`${q}||${ordem}`);
+    go({ categoria: null });
+  }
+  useEffect(() => {
+    if (widenedKey === null || widenedKey !== searchKey || !ready) return;
+    setWidenedKey(null);
+    (empty ? emptyTitleRef.current : statusRef.current)?.focus();
+  }, [widenedKey, searchKey, ready, empty]);
 
   const sortId = useId();
   const where = `${q ? ` para «${q}»` : ''}${categoryName ? ` em ${categoryName}` : ''}`;
@@ -154,8 +185,13 @@ export function ExplorePage() {
       {/* Fica montado enquanto carrega: o select não perde o foco ao mudar a ordem. */}
       {!empty && (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <p role="status" className="m-0 font-body text-caption font-medium text-ink-muted">
-            {products.isSuccess && (
+          <p
+            ref={statusRef}
+            role="status"
+            tabIndex={-1}
+            className="m-0 font-body text-caption font-medium text-ink-muted outline-none"
+          >
+            {ready && (
               <>
                 <strong className="text-ink">
                   {productCount(items.length, products.hasNextPage)}
@@ -189,7 +225,7 @@ export function ExplorePage() {
         </div>
       )}
 
-      {products.isPending && (
+      {(products.isPending || holding) && (
         <CatalogSkeleton
           key={attempt}
           variant="section"
@@ -205,6 +241,7 @@ export function ExplorePage() {
       {empty &&
         (q ? (
           <EmptyState
+            titleRef={emptyTitleRef}
             title={`Nada para «${q}»${categoryName ? ` em ${categoryName}` : ''}`}
             text={
               categoria
@@ -213,7 +250,7 @@ export function ExplorePage() {
             }
             action={
               categoria ? (
-                <Button variant="secondary" onClick={() => go({ categoria: null })}>
+                <Button variant="secondary" onClick={searchEverywhere}>
                   Procurar em tudo
                 </Button>
               ) : undefined
@@ -221,18 +258,20 @@ export function ExplorePage() {
           />
         ) : categoria ? (
           <EmptyState
+            titleRef={emptyTitleRef}
             title={
               categoryName ? `Ainda não há produtos em ${categoryName}.` : 'Ainda não há produtos.'
             }
             text="Procura em todas as categorias."
             action={
-              <Button variant="secondary" onClick={() => go({ categoria: null })}>
+              <Button variant="secondary" onClick={searchEverywhere}>
                 Procurar em tudo
               </Button>
             }
           />
         ) : (
           <EmptyState
+            titleRef={emptyTitleRef}
             title="Ainda não há produtos."
             text="Quando as lojas publicarem produtos, aparecem aqui."
           />
