@@ -48,7 +48,7 @@ vi.mock('@/features/auth/AuthProvider', async () => {
   };
 });
 
-const toast = vi.hoisted(() => vi.fn());
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn() }));
 vi.mock('sonner', async (importOriginal) => ({
   ...(await importOriginal<typeof import('sonner')>()),
   toast,
@@ -152,7 +152,11 @@ describe('FeaturesPage (A07), lista', () => {
     expect(within(rowOf('Doces da Ana')).getByText('Sem datas')).toBeInTheDocument();
     expect(within(rowOf('Mimos da Teresa')).getByText(/^Terminou em /)).toBeInTheDocument();
     expect(within(rowOf('Gelados Fresquinhos')).getByText(/^De /)).toBeInTheDocument();
-    expect(screen.getByText('No ar: pode aparecer no Início (até 10 lojas).')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'O Início mostra até 10 destaques «No ar», por esta ordem. Os desligados ficam no fim, sem ordem.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('um destaque pago, se aparecer, diz «Promoção paga» na origem', async () => {
@@ -175,9 +179,35 @@ describe('FeaturesPage (A07), lista', () => {
   it('sem destaques, diz o que fazer', async () => {
     api.listFeatures.mockResolvedValue([]);
     mount();
+    expect(await screen.findByText('Ainda não há lojas em destaque.')).toBeInTheDocument();
     expect(
-      await screen.findByText('Ainda não há lojas em destaque. Adiciona a primeira.'),
+      screen.getByText('Adiciona a primeira para aparecer em «Lojas da comunidade», no Início.'),
     ).toBeInTheDocument();
+    const user = userEvent.setup({ delay: null });
+    const empty = screen.getByRole('region', { name: 'Lista de destaques' });
+    await user.click(within(empty).getByRole('button', { name: 'Adicionar destaque' }));
+    expect(screen.getByRole('region', { name: 'Adicionar destaque' })).toBeInTheDocument();
+  });
+
+  it('«Loja não aprovada» usa a etiqueta de perigo, diferente de «Desligado»', async () => {
+    api.listFeatures.mockResolvedValue([
+      feature({ id: 'x', storeName: 'Loja X', storeStatus: 'suspended' as never }),
+      feature({ id: 'y', storeName: 'Loja Y', isActive: false }),
+    ]);
+    mount();
+    await screen.findByRole('link', { name: 'Loja X' });
+    const store = within(rowOf('Loja X')).getByText('Loja não aprovada');
+    const off = within(rowOf('Loja Y')).getByText('Desligado');
+    expect(store).toHaveClass('bg-danger-tint', 'text-danger');
+    expect(off).not.toHaveClass('bg-danger-tint');
+  });
+
+  it('o traço «—» de um destaque desligado fica em ink-muted, com «Sem ordem» para leitores', async () => {
+    mount();
+    await screen.findByRole('link', { name: 'Acessórios do Kiko' });
+    const dash = within(rowOf('Acessórios do Kiko')).getByText('—');
+    expect(dash.closest('strong')).toHaveClass('text-ink-muted');
+    expect(within(rowOf('Acessórios do Kiko')).getByText('Sem ordem')).toHaveClass('sr-only');
   });
 
   it('se a lista não carregar, mostra o erro e permite tentar outra vez', async () => {
@@ -254,7 +284,7 @@ describe('FeaturesPage (A07), adicionar', () => {
     expect(catalog.listStores).toHaveBeenCalledWith({ q: 'Salg' });
     await user.type(within(form).getByLabelText('Nota interna (opcional)'), '  Feira de dezembro ');
     await user.click(within(form).getByRole('button', { name: 'Guardar destaque' }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith('Destaque guardado.'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Destaque guardado.'));
     expect(api.saveFeature).toHaveBeenCalledWith({
       storeId: 'loja-salgados',
       // A posição é a da base (fim da ordem), para duas criações ao mesmo tempo não colidirem.
@@ -265,6 +295,17 @@ describe('FeaturesPage (A07), adicionar', () => {
     });
     expect(screen.queryByRole('region', { name: 'Adicionar destaque' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Adicionar destaque' })).toHaveFocus();
+  });
+
+  it('sem resultados, diz o que fazer a seguir', async () => {
+    const { user, form } = await openForm();
+    catalog.listStores.mockResolvedValue([]);
+    await user.type(within(form).getByLabelText('Loja'), 'xyz');
+    expect(
+      await within(form).findByText(
+        'Não encontrámos lojas aprovadas com esse nome. Experimenta outra palavra.',
+      ),
+    ).toHaveAttribute('role', 'status');
   });
 
   it('envia as datas em hora de Luanda, com o fuso', async () => {
@@ -279,7 +320,7 @@ describe('FeaturesPage (A07), adicionar', () => {
       target: { value: '2026-12-24T18:30' },
     });
     await user.click(within(form).getByRole('button', { name: 'Guardar destaque' }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith('Destaque guardado.'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Destaque guardado.'));
     expect(api.saveFeature).toHaveBeenCalledWith(
       expect.objectContaining({
         startsAt: '2026-12-01T10:00:00+01:00',
@@ -309,6 +350,11 @@ describe('FeaturesPage (A07), adicionar', () => {
     await user.click(within(form).getByRole('button', { name: 'Guardar destaque' }));
     const search = within(form).getByLabelText('Loja');
     expect(search).toHaveAttribute('aria-invalid', 'true');
+    // p-field__error: 13/18, peso 500, ícone de alerta decorativo à esquerda.
+    const error = within(form).getByText('Escolhe uma loja da lista.').closest('p') as HTMLElement;
+    expect(error).toHaveClass('font-medium');
+    expect(error).not.toHaveClass('font-bold');
+    expect(error.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(search).toHaveAccessibleDescription(
       expect.stringContaining('Escolhe uma loja da lista.'),
     );
@@ -333,14 +379,16 @@ describe('FeaturesPage (A07), adicionar', () => {
 
   it('o erro FEATURE_EXISTS da API aparece num alerta', async () => {
     const { user, form } = await openForm();
-    api.saveFeature.mockRejectedValue(new Error('Esta loja já está em destaque.'));
+    api.saveFeature.mockRejectedValue(
+      new Error('Esta loja já está em destaque. Encontra-a na lista.'),
+    );
     await user.type(within(form).getByLabelText('Loja'), 'Salg');
     await user.click(await within(form).findByRole('radio', { name: 'Salgados do Bloco' }));
     await user.click(within(form).getByRole('button', { name: 'Guardar destaque' }));
     expect(await within(form).findByRole('alert')).toHaveTextContent(
-      'Esta loja já está em destaque.',
+      'Esta loja já está em destaque. Encontra-a na lista.',
     );
-    expect(toast).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('se a sessão mudar enquanto guarda, não mostra «Destaque guardado.» ao utilizador seguinte', async () => {
@@ -356,7 +404,7 @@ describe('FeaturesPage (A07), adicionar', () => {
     await waitFor(() =>
       expect(screen.queryByRole('region', { name: 'Adicionar destaque' })).toBeNull(),
     );
-    expect(toast).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('Cancelar fecha o formulário e devolve o foco a «Adicionar destaque»', async () => {
@@ -427,9 +475,11 @@ describe('FeaturesPage (A07), ordem e estado', () => {
     api.reorderFeatures.mockRejectedValue(new Error(api.FEATURES_CHANGED));
     mount();
     await user.click(await screen.findByRole('button', { name: 'Subir Gelados Fresquinhos' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'A lista mudou. Atualizámos a ordem; tenta outra vez.',
-    );
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('A lista mudou. Atualizámos a ordem; tenta outra vez.');
+    // Aviso (s-notice--warn), não falha: a lista já foi reposta.
+    expect(alert).toHaveClass('bg-warning-tint');
+    expect(alert).not.toHaveClass('bg-danger-tint');
     await waitFor(() => expect(api.listFeatures).toHaveBeenCalledTimes(2));
   });
 
@@ -520,7 +570,7 @@ describe('FeaturesPage (A07), remover', () => {
     await user.click(trigger);
     dialog = screen.getByRole('alertdialog', { name: 'Remover destaque de Gelados Fresquinhos?' });
     await user.click(within(dialog).getByRole('button', { name: 'Remover destaque' }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith('Destaque removido.'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Destaque removido.'));
     expect(api.removeFeature).toHaveBeenCalledWith('b');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await waitFor(() => expect(api.listFeatures).toHaveBeenCalledTimes(2));
@@ -539,7 +589,7 @@ describe('FeaturesPage (A07), remover', () => {
     act(() => auth.set({ session: { user: { id: 'outra-pessoa' } }, loading: false }));
     finish();
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-    expect(toast).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('se remover falhar, o erro aparece dentro da confirmação', async () => {

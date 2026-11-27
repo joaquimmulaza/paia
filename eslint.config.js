@@ -13,6 +13,7 @@ export default tseslint.config(
       'context.md',
       'CLAUDE.md',
       '.superpowers',
+      '.claude',
       'supabase/.temp',
       'src/types/database.ts',
     ],

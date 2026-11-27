@@ -8,6 +8,8 @@ export const tagClass = {
   /** «Novo»: a única rotação permitida; sem rotação com movimento reduzido. */
   new: cn(base, 'border-ink bg-brand text-ink -rotate-4 motion-reduce:rotate-0'),
   waiting: cn(base, 'bg-warning-tint text-warning'),
+  /** p-tag--cancelled: em danger (um problema a resolver). */
+  cancelled: cn(base, 'bg-danger-tint text-danger'),
   soldout: cn(base, 'border-ink bg-ink text-on-ink'),
   /** Categoria (p-tag--neutral): fundo surface, texto e contorno ink. */
   neutral: cn(base, 'border-ink bg-surface text-ink'),

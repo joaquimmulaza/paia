@@ -69,12 +69,18 @@ describe('RequireAdmin', () => {
     expect(screen.queryByText('Página da administração')).toBeNull();
   });
 
-  it('um utilizador comum vê «Não tens permissão para fazer isto.» e volta ao início', async () => {
+  it('um utilizador comum vê «Não tens acesso a esta área» e volta ao início', async () => {
     api.getMyProfile.mockResolvedValue({ ...profile, isAdmin: false });
     mount();
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Não tens permissão para fazer isto.' }),
+      await screen.findByRole('heading', { level: 1, name: 'Não tens acesso a esta área' }),
     ).toBeInTheDocument();
+    expect(screen.getByText('É só para a equipa da administração do PAIÁ.')).toBeInTheDocument();
+    expect(document.title).toBe('Sem acesso · PAIÁ');
+    expect(document.querySelector('[data-testid="lock-mark"]')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
     expect(screen.getByRole('link', { name: 'Voltar ao início' })).toHaveAttribute('href', '/');
     expect(screen.queryByText('Página da administração')).toBeNull();
   });
