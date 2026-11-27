@@ -1,6 +1,6 @@
 // Design system: Estado vazio (s-empty).
 import { Search, type LucideIcon } from 'lucide-react';
-import { useId, type ReactNode } from 'react';
+import { useId, type ReactNode, type Ref } from 'react';
 import { cn } from '@/lib/utils';
 
 type EmptyStateProps = {
@@ -10,6 +10,8 @@ type EmptyStateProps = {
   action?: ReactNode;
   /** Ícone na caixa brand-tint. Por omissão, a lupa. */
   icon?: LucideIcon;
+  /** Para a página levar o foco ao título (por exemplo, depois de alargar a pesquisa). */
+  titleRef?: Ref<HTMLHeadingElement>;
   className?: string;
 };
 
@@ -18,6 +20,7 @@ export function EmptyState({
   text,
   action,
   icon: Icon = Search,
+  titleRef,
   className,
 }: EmptyStateProps) {
   const titleId = useId();
@@ -36,7 +39,13 @@ export function EmptyState({
       >
         <Icon className="size-8" />
       </span>
-      <h2 id={titleId} className="m-0 font-display text-title font-bold wrap-break-word">
+      <h2
+        id={titleId}
+        ref={titleRef}
+        // Focável só por código, sem anel: o foco serve para o leitor de ecrã ler o título.
+        tabIndex={titleRef ? -1 : undefined}
+        className="m-0 font-display text-title font-bold wrap-break-word outline-none"
+      >
         {title}
       </h2>
       <p className="m-0 font-body text-body">{text}</p>

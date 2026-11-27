@@ -226,6 +226,54 @@ describe('ExplorePage (C02)', () => {
     expect(screen.queryByRole('button', { name: 'Ver mais produtos' })).not.toBeInTheDocument();
   });
 
+  it('se a página seguinte falha, o foco não salta para um cartão quando a ordem muda', async () => {
+    const user = userEvent.setup({ delay: null });
+    api.searchProducts.mockImplementation(async (p: { after?: ProductCursor; sort: string }) => {
+      if (p.after) throw new Error('Sem ligação. Tenta outra vez.');
+      return p.sort === 'recentes' ? page(FOUR.slice(0, 2), CURSOR) : page(FOUR);
+    });
+    renderExplore();
+    await user.click(await screen.findByRole('button', { name: 'Ver mais produtos' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sem ligação. Tenta outra vez.');
+
+    const select = screen.getByRole('combobox', { name: 'Ordenar' });
+    await user.selectOptions(select, 'Preço mais baixo');
+    await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(4));
+    await expectCount('4 produtos');
+    expect(screen.getByRole('link', { name: 'Produto 3' })).not.toHaveFocus();
+    expect(select).toHaveFocus();
+  });
+
+  it('enquanto as categorias carregam, a contagem espera pelo nome da categoria', async () => {
+    let resolveCategories: (c: { id: string; name: string; slug: string }[]) => void = () => {};
+    api.listCategories.mockImplementation(
+      () => new Promise((resolve) => (resolveCategories = resolve)),
+    );
+    renderExplore('/explorar?q=bolo&categoria=doces');
+    await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(4));
+    expect(screen.getAllByRole('status').map((s) => s.textContent)).not.toContain(
+      '4 produtos para «bolo»',
+    );
+    await act(async () => resolveCategories([{ id: 'c1', name: 'Doces', slug: 'doces' }]));
+    await expectCount('4 produtos para «bolo» em Doces');
+  });
+
+  it('enquanto as categorias carregam, o estado vazio não mostra um título sem a categoria', async () => {
+    let resolveCategories: (c: { id: string; name: string; slug: string }[]) => void = () => {};
+    api.listCategories.mockImplementation(
+      () => new Promise((resolve) => (resolveCategories = resolve)),
+    );
+    api.searchProducts.mockResolvedValue(page([]));
+    renderExplore('/explorar?q=pizza&categoria=salgados');
+    await waitFor(() => expect(api.searchProducts).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByRole('heading', { name: 'Nada para «pizza»' })).not.toBeInTheDocument();
+    await act(async () => resolveCategories([{ id: 'c2', name: 'Salgados', slug: 'salgados' }]));
+    expect(
+      await screen.findByRole('heading', { name: 'Nada para «pizza» em Salgados' }),
+    ).toBeInTheDocument();
+  });
+
   it('enquanto pede a página seguinte, o botão mostra o indicador', async () => {
     const user = userEvent.setup({ delay: null });
     api.searchProducts.mockImplementation((p: { after?: ProductCursor }) =>
@@ -312,6 +360,21 @@ describe('ExplorePage (K07 · sem resultados)', () => {
     await user.click(await screen.findByRole('button', { name: 'Procurar em tudo' }));
     expect(router.state.location.search).toBe('?q=pizza');
     await expectCount('4 produtos para «pizza»');
+    // O foco passa para a contagem, que já é a região status: não há um segundo anúncio.
+    await waitFor(() =>
+      expect(document.activeElement).toHaveTextContent('4 produtos para «pizza»'),
+    );
+    expect(document.activeElement).toHaveAttribute('role', 'status');
+    expect(document.activeElement).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('«Procurar em tudo» ainda sem resultados leva o foco ao título do estado vazio', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderExplore('/explorar?q=pizza&categoria=salgados');
+    await user.click(await screen.findByRole('button', { name: 'Procurar em tudo' }));
+    const title = await screen.findByRole('heading', { level: 2, name: 'Nada para «pizza»' });
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(title).toHaveAttribute('tabindex', '-1');
   });
 
   it('sem categoria: «Nada para «pizza»», sem «Procurar em tudo» nem sugestões', async () => {
