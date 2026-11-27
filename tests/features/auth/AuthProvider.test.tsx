@@ -15,7 +15,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { auth: { getSession: mocks.getSession, onAuthStateChange: mocks.onAuthStateChange } },
 }));
 
-import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
+import { AuthProvider, currentUserId, useAuth } from '@/features/auth/AuthProvider';
 
 function Probe() {
   const { session, loading } = useAuth();
@@ -97,5 +97,21 @@ describe('AuthProvider', () => {
     expect(() => render(<Probe />)).toThrow(/AuthProvider/);
     window.removeEventListener('error', swallow);
     spy.mockRestore();
+  });
+});
+
+describe('currentUserId', () => {
+  it('segue o utilizador da sessão fora do React, e volta a null ao desmontar', async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+    const { unmount } = mount();
+    await screen.findByText('com sessão');
+    expect(currentUserId()).toBe('u1');
+    act(() => mocks.state.listener?.('SIGNED_IN', { user: { id: 'u2' } }));
+    expect(currentUserId()).toBe('u2');
+    act(() => mocks.state.listener?.('SIGNED_OUT', null));
+    expect(currentUserId()).toBeNull();
+    act(() => mocks.state.listener?.('SIGNED_IN', { user: { id: 'u3' } }));
+    unmount();
+    expect(currentUserId()).toBeNull();
   });
 });

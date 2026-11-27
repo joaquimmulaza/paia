@@ -20,12 +20,14 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { AuthErrorAlert, errorMessage } from '@/features/auth/AuthErrorAlert';
 import { tagClass } from '@/features/catalog/components/tag-styles';
+import { currentUserId, useAuth } from '@/features/auth/AuthProvider';
 import { cn, focusRing } from '@/lib/utils';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { AddFeatureForm } from './AddFeatureForm';
 import { AdminShell } from './AdminShell';
 import { listFeatures, removeFeature, reorderFeatures, setFeatureActive } from './api';
 import { adminKeys, invalidateFeatures } from './queries';
+
 import {
   featureStatus,
   periodLabel,
@@ -56,22 +58,37 @@ function splitByActive(features: AdminFeature[]) {
 export function FeaturesPage() {
   useDocumentTitle('Destaques · Administração');
   const queryClient = useQueryClient();
-  const features = useQuery({ queryKey: adminKeys.features(), queryFn: listFeatures });
+  const userId = useAuth().session?.user.id ?? null;
+  const featuresKey = adminKeys.features(userId);
+  const features = useQuery({ queryKey: featuresKey, queryFn: listFeatures });
   const [formOpen, setFormOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
 
-  // Depois de mover, o foco volta ao mesmo botão do item movido (a linha muda de sítio no DOM).
-  const arrows = useRef(new Map<string, HTMLButtonElement>());
+  // O foco segue o controlo usado quando a linha muda de sítio:
+  // - ao mover, fica na mesma seta do item movido enquanto a ordenação corre;
+  // - ao ligar ou desligar, a linha passa para o fim ou volta à ordem, e o foco vai uma vez
+  //   para o interruptor dela, depois de a lista ser lida outra vez.
+  const controls = useRef(new Map<string, HTMLButtonElement>());
   const [focusAfterMove, setFocusAfterMove] = useState<string | null>(null);
+  const focusOnce = useRef<string | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
   useLayoutEffect(() => {
-    if (!focusAfterMove) return;
-    arrows.current.get(focusAfterMove)?.focus();
-  }, [focusAfterMove, features.data]);
-  const arrowRef = useCallback(
+    if (focusOnce.current) {
+      controls.current.get(focusOnce.current)?.focus();
+      focusOnce.current = null;
+      return;
+    }
+    if (focusAfterMove) controls.current.get(focusAfterMove)?.focus();
+  }, [focusTick, focusAfterMove, features.data]);
+  const requestFocus = useCallback((key: string) => {
+    focusOnce.current = key;
+    setFocusTick((t) => t + 1);
+  }, []);
+  const controlRef = useCallback(
     (key: string) => (el: HTMLButtonElement | null) => {
-      if (el) arrows.current.set(key, el);
-      else arrows.current.delete(key);
+      if (el) controls.current.set(key, el);
+      else controls.current.delete(key);
     },
     [],
   );
@@ -79,8 +96,8 @@ export function FeaturesPage() {
   const reorder = useMutation({
     mutationFn: (ids: string[]) => reorderFeatures(ids),
     onMutate: async (ids: string[]) => {
-      await queryClient.cancelQueries({ queryKey: adminKeys.features() });
-      queryClient.setQueryData<AdminFeature[]>(adminKeys.features(), (old) => {
+      await queryClient.cancelQueries({ queryKey: featuresKey });
+      queryClient.setQueryData<AdminFeature[]>(featuresKey, (old) => {
         if (!old) return old;
         const byId = new Map(old.map((f) => [f.id, f]));
         const moved = ids.map((id) => byId.get(id)).filter((f): f is AdminFeature => !!f);
@@ -183,35 +200,26 @@ export function FeaturesPage() {
                       </th>
                     </tr>
                   </thead>
+                  {/* Uma só lista: ao ligar ou desligar, a linha muda de sítio sem ser montada de novo. */}
                   <tbody>
-                    {active.map((f, i) => (
-                      <FeatureRow
-                        key={f.id}
-                        feature={f}
-                        now={now}
-                        order={i + 1}
-                        canUp={i > 0}
-                        canDown={i < active.length - 1}
-                        onMove={(dir) => move(f, dir, active)}
-                        arrowRef={arrowRef}
-                        onError={setActionError}
-                        onRemoved={() => addButton.current?.focus()}
-                      />
-                    ))}
-                    {inactive.map((f) => (
-                      <FeatureRow
-                        key={f.id}
-                        feature={f}
-                        now={now}
-                        order={null}
-                        canUp={false}
-                        canDown={false}
-                        onMove={() => {}}
-                        arrowRef={arrowRef}
-                        onError={setActionError}
-                        onRemoved={() => addButton.current?.focus()}
-                      />
-                    ))}
+                    {[...active, ...inactive].map((f) => {
+                      const i = active.indexOf(f);
+                      return (
+                        <FeatureRow
+                          key={f.id}
+                          feature={f}
+                          now={now}
+                          order={i >= 0 ? i + 1 : null}
+                          canUp={i > 0}
+                          canDown={i >= 0 && i < active.length - 1}
+                          onMove={(dir) => move(f, dir, active)}
+                          controlRef={controlRef}
+                          onToggled={() => requestFocus(`${f.id}:switch`)}
+                          onError={setActionError}
+                          onRemoved={() => addButton.current?.focus()}
+                        />
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -242,7 +250,9 @@ type FeatureRowProps = {
   canUp: boolean;
   canDown: boolean;
   onMove: (direction: Direction) => void;
-  arrowRef: (key: string) => (el: HTMLButtonElement | null) => void;
+  controlRef: (key: string) => (el: HTMLButtonElement | null) => void;
+  /** Depois de ligar ou desligar e de a lista ser lida outra vez. */
+  onToggled: () => void;
   onError: (message: string | null) => void;
   onRemoved: () => void;
 };
@@ -254,7 +264,8 @@ function FeatureRow({
   canUp,
   canDown,
   onMove,
-  arrowRef,
+  controlRef,
+  onToggled,
   onError,
   onRemoved,
 }: FeatureRowProps) {
@@ -263,7 +274,10 @@ function FeatureRow({
     mutationFn: (active: boolean) => setFeatureActive(f.id, active),
     onMutate: () => onError(null),
     onError: (error) => onError(errorMessage(error)),
-    onSettled: () => invalidateFeatures(queryClient),
+    onSettled: async () => {
+      await invalidateFeatures(queryClient);
+      onToggled();
+    },
   });
   const status = featureStatus(f, now);
   const checked = toggle.isPending ? toggle.variables : f.isActive;
@@ -280,22 +294,27 @@ function FeatureRow({
               </>
             )}
           </strong>
-          <ArrowButton
-            ref={arrowRef(`${f.id}:up`)}
-            label={`Subir ${f.storeName}`}
-            disabled={!canUp}
-            onClick={() => onMove('up')}
-          >
-            <ChevronUp aria-hidden="true" className="size-5" />
-          </ArrowButton>
-          <ArrowButton
-            ref={arrowRef(`${f.id}:down`)}
-            label={`Descer ${f.storeName}`}
-            disabled={!canDown}
-            onClick={() => onMove('down')}
-          >
-            <ChevronDown aria-hidden="true" className="size-5" />
-          </ArrowButton>
+          {/* Um destaque desligado não entra na ordem (a base recusa-o): sem setas. */}
+          {order !== null && (
+            <>
+              <ArrowButton
+                ref={controlRef(`${f.id}:up`)}
+                label={`Subir ${f.storeName}`}
+                disabled={!canUp}
+                onClick={() => onMove('up')}
+              >
+                <ChevronUp aria-hidden="true" className="size-5" />
+              </ArrowButton>
+              <ArrowButton
+                ref={controlRef(`${f.id}:down`)}
+                label={`Descer ${f.storeName}`}
+                disabled={!canDown}
+                onClick={() => onMove('down')}
+              >
+                <ChevronDown aria-hidden="true" className="size-5" />
+              </ArrowButton>
+            </>
+          )}
         </div>
       </td>
       <td className={cn(tdClass, 'min-w-40')}>
@@ -313,6 +332,7 @@ function FeatureRow({
       <td className={tdClass}>{SOURCE_LABEL[f.source]}</td>
       <td className={tdClass}>
         <Switch
+          ref={controlRef(`${f.id}:switch`)}
           aria-label={`Destaque de ${f.storeName} ativo`}
           checked={checked}
           aria-busy={toggle.isPending || undefined}
@@ -373,11 +393,14 @@ function RemoveFeature({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const removed = useRef(false);
+
   const remove = useMutation({
     mutationFn: () => removeFeature(f.id),
-    onSuccess: () => {
+    onMutate: () => ({ userId: currentUserId() }),
+    onSuccess: (_data, _vars, context) => {
       removed.current = true;
-      toast('Destaque removido.');
+      // Se a conta mudou a meio, a confirmação não é para quem está agora no aparelho.
+      if (context.userId === currentUserId()) toast('Destaque removido.');
       setOpen(false);
     },
     onSettled: () => invalidateFeatures(queryClient),

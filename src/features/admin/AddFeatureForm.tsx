@@ -14,11 +14,18 @@ import { catalogKeys } from '@/features/catalog/queries';
 import { MAX_QUERY_LENGTH } from '@/features/catalog/search-params';
 import type { StoreSummary } from '@/features/catalog/types';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
+import { currentUserId } from '@/features/auth/AuthProvider';
 import { cn, focusRing } from '@/lib/utils';
 import { saveFeature } from './api';
-import { toLuandaIso } from './dates';
 import { invalidateFeatures } from './queries';
-import { NOTE_MAX, noteLength, validateFeature, type FeatureErrors } from './validate';
+
+import {
+  NOTE_MAX,
+  noteLength,
+  parseFeatureDates,
+  validateFeature,
+  type FeatureErrors,
+} from './validate';
 
 const SEARCH_DELAY_MS = 300;
 
@@ -43,6 +50,7 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
     storeHint: useId(),
     storeError: useId(),
     start: useId(),
+    startError: useId(),
     end: useId(),
     endError: useId(),
     note: useId(),
@@ -60,6 +68,7 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
   const [errors, setErrors] = useState<FeatureErrors>({});
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const startRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -76,9 +85,11 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
 
   const save = useMutation({
     mutationFn: (v: Parameters<typeof saveFeature>[0]) => saveFeature(v),
-    onSuccess: async () => {
+    onMutate: () => ({ userId: currentUserId() }),
+    onSuccess: async (_id, _v, context) => {
       await invalidateFeatures(queryClient);
-      toast('Destaque guardado.');
+      // Se a conta mudou a meio, a confirmação não é para quem está agora no aparelho.
+      if (context.userId === currentUserId()) toast('Destaque guardado.');
       onClose();
     },
   });
@@ -86,23 +97,24 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (save.isPending) return;
-    const startsAt = toLuandaIso(start);
-    const endsAt = toLuandaIso(end);
-    const found = validateFeature({ storeId, position: nextPosition, startsAt, endsAt, note });
+    const found = validateFeature({ storeId, position: nextPosition, start, end, note });
     setErrors(found);
     // O foco vai para o primeiro campo com erro, pela ordem do formulário.
     const firstInvalid = found.store
       ? searchRef
-      : found.endsAt
-        ? endRef
-        : found.note
-          ? noteRef
-          : null;
+      : found.start
+        ? startRef
+        : found.end
+          ? endRef
+          : found.note
+            ? noteRef
+            : null;
     if (firstInvalid) {
       firstInvalid.current?.focus();
       return;
     }
     if (found.position || !storeId) return;
+    const { startsAt, endsAt } = parseFeatureDates({ start, end });
     const trimmed = note.trim();
     save.mutate({
       storeId,
@@ -167,12 +179,20 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
           <div className={fieldClass}>
             <Label htmlFor={ids.start}>Início (opcional)</Label>
             <Input
+              ref={startRef}
               id={ids.start}
               type="datetime-local"
               className={denseInput}
               value={start}
               onChange={(e) => setStart(e.target.value)}
+              aria-invalid={errors.start ? true : undefined}
+              aria-describedby={errors.start ? ids.startError : undefined}
             />
+            {errors.start && (
+              <p id={ids.startError} className={errorClass}>
+                {errors.start}
+              </p>
+            )}
           </div>
           <div className={fieldClass}>
             <Label htmlFor={ids.end}>Fim (opcional)</Label>
@@ -183,12 +203,12 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
               className={denseInput}
               value={end}
               onChange={(e) => setEnd(e.target.value)}
-              aria-invalid={errors.endsAt ? true : undefined}
-              aria-describedby={errors.endsAt ? ids.endError : undefined}
+              aria-invalid={errors.end ? true : undefined}
+              aria-describedby={errors.end ? ids.endError : undefined}
             />
-            {errors.endsAt && (
+            {errors.end && (
               <p id={ids.endError} className={errorClass}>
-                {errors.endsAt}
+                {errors.end}
               </p>
             )}
           </div>
@@ -232,7 +252,7 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
           <legend className="mb-1.5 font-display text-label font-bold text-ink uppercase">
             Origem
           </legend>
-          <RadioGroup value="admin" aria-label="Origem">
+          <RadioGroup value="admin">
             <RadioGroupItem value="admin">Administração</RadioGroupItem>
             <RadioGroupItem value="paid" disabled aria-describedby={ids.paidHint}>
               Promoção paga
@@ -287,11 +307,7 @@ function StoreResults({ query, stores, value, onChange }: StoreResultsProps) {
   return (
     <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
       <legend className="sr-only">Resultados da pesquisa de lojas</legend>
-      <RadioGroup
-        value={value ?? ''}
-        onValueChange={onChange}
-        aria-label="Resultados da pesquisa de lojas"
-      >
+      <RadioGroup value={value ?? ''} onValueChange={onChange}>
         {stores.data.map((s) => (
           <RadioGroupItem key={s.id} value={s.id}>
             {s.name}

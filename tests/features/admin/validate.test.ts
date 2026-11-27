@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { NOTE_MAX, noteLength, validateFeature } from '@/features/admin/validate';
+import {
+  NOTE_MAX,
+  noteLength,
+  parseFeatureDates,
+  validateFeature,
+} from '@/features/admin/validate';
 
-const ok = { storeId: 's1', position: 0, startsAt: null, endsAt: null, note: '' };
+const ok = { storeId: 's1', position: 0, start: '', end: '', note: '' };
 
 describe('validateFeature', () => {
   it('sem erros devolve um objeto vazio', () => {
@@ -30,16 +35,28 @@ describe('validateFeature', () => {
   });
 
   it('o fim tem de ser depois do início (igual também falha)', () => {
-    const start = '2026-12-02T10:00:00+01:00';
-    expect(
-      validateFeature({ ...ok, startsAt: start, endsAt: '2026-12-01T10:00:00+01:00' }).endsAt,
-    ).toBe('A data de fim tem de ser depois da data de início.');
-    expect(validateFeature({ ...ok, startsAt: start, endsAt: start }).endsAt).toBe(
+    const start = '2026-12-02T10:00';
+    expect(validateFeature({ ...ok, start, end: '2026-12-01T10:00' }).end).toBe(
       'A data de fim tem de ser depois da data de início.',
     );
-    expect(
-      validateFeature({ ...ok, startsAt: start, endsAt: '2026-12-03T10:00:00+01:00' }).endsAt,
-    ).toBeUndefined();
-    expect(validateFeature({ ...ok, endsAt: start }).endsAt).toBeUndefined();
+    expect(validateFeature({ ...ok, start, end: start }).end).toBe(
+      'A data de fim tem de ser depois da data de início.',
+    );
+    expect(validateFeature({ ...ok, start, end: '2026-12-03T10:00' }).end).toBeUndefined();
+    expect(validateFeature({ ...ok, end: start }).end).toBeUndefined();
+  });
+
+  it('uma data preenchida que não se consegue ler dá erro no campo, em vez de ser ignorada', () => {
+    const e = validateFeature({ ...ok, start: '2026-02-30T10:00', end: 'lixo' });
+    expect(e.start).toBe('Indica uma data e hora válidas.');
+    expect(e.end).toBe('Indica uma data e hora válidas.');
+    expect(validateFeature({ ...ok, start: '   ' }).start).toBeUndefined();
+  });
+
+  it('converte as datas lidas para ISO de Luanda', () => {
+    expect(parseFeatureDates({ start: '2026-12-01T10:00', end: '' })).toEqual({
+      startsAt: '2026-12-01T10:00:00+01:00',
+      endsAt: null,
+    });
   });
 });

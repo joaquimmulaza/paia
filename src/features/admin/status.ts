@@ -16,15 +16,16 @@ export const STATUS_LABEL: Record<FeatureStatus, string> = {
 const before = (iso: string, now: Date) => new Date(iso).getTime() <= now.getTime();
 
 /**
- * «No ar» vem da base (`isLive`), que conhece o estado da loja. Os outros estados
- * explicam porque não está no ar. O período é [início, fim): o fim exato já não conta.
+ * Calculado agora, a partir de isActive, do período [início, fim) e do estado da loja: é a
+ * mesma regra da base (private.feature_is_shown). Não se confia em `isLive`, que é de quando
+ * a lista foi lida: um início ou um fim que passe com a página aberta muda logo o estado.
  */
 export function featureStatus(f: AdminFeature, now: Date): FeatureStatus {
-  if (f.isLive) return 'live';
   if (!f.isActive) return 'off';
   if (f.startsAt && !before(f.startsAt, now)) return 'scheduled';
   if (f.endsAt && before(f.endsAt, now)) return 'expired';
-  return 'store';
+  if (f.storeStatus !== 'approved') return 'store';
+  return 'live';
 }
 
 export function periodLabel(f: AdminFeature, now: Date): string {
