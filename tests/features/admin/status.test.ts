@@ -26,8 +26,34 @@ function feature(over: Partial<AdminFeature> = {}): AdminFeature {
 }
 
 describe('featureStatus', () => {
-  it('«No ar» quando a base diz que é elegível (isLive)', () => {
+  it('«No ar» quando está ativo, a loja aprovada e dentro do período', () => {
     expect(featureStatus(feature({ isLive: true }), NOW)).toBe('live');
+    expect(featureStatus(feature({ startsAt: PAST, endsAt: FUTURE, isLive: true }), NOW)).toBe(
+      'live',
+    );
+  });
+
+  it('o início chegou depois de a lista ser lida (isLive ainda false): «No ar», não «Loja não aprovada»', () => {
+    expect(featureStatus(feature({ startsAt: PAST, isLive: false }), NOW)).toBe('live');
+  });
+
+  it('o início exatamente agora já conta (período [início, fim))', () => {
+    expect(featureStatus(feature({ startsAt: NOW.toISOString() }), NOW)).toBe('live');
+  });
+
+  it('o fim passou depois de a lista ser lida (isLive ainda true): «Expirado», não «No ar»', () => {
+    expect(featureStatus(feature({ endsAt: PAST, isLive: true }), NOW)).toBe('expired');
+  });
+
+  it('«Agendado» mesmo que isLive venha true de uma leitura antiga', () => {
+    expect(featureStatus(feature({ startsAt: FUTURE, isLive: true }), NOW)).toBe('scheduled');
+  });
+
+  it('«Loja não aprovada» só quando a loja não está aprovada', () => {
+    for (const storeStatus of ['suspended', 'pending_approval', 'rejected', 'draft'] as const) {
+      expect(featureStatus(feature({ storeStatus, isLive: false }), NOW)).toBe('store');
+    }
+    expect(featureStatus(feature({ storeStatus: 'approved', isLive: false }), NOW)).toBe('live');
   });
 
   it('«Desligado» quando não está ativo, mesmo dentro do período', () => {

@@ -17,6 +17,15 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+// O utilizador da sessão neste momento, fora do React. Uma mutação que acaba depois de
+// uma troca de conta compara com ele (os ecrãs da conta anterior podem já ter saído).
+let liveUserId: string | null = null;
+
+/** O id do utilizador da sessão agora (null sem sessão). */
+export function currentUserId(): string | null {
+  return liveUserId;
+}
+
 interface AuthProviderProps {
   children: ReactNode;
   /**
@@ -40,6 +49,7 @@ export function AuthProvider({ children, onUserChange }: AuthProviderProps) {
       const next = session?.user.id ?? null;
       if (userId !== undefined && next !== userId) onUserChangeRef.current?.();
       userId = next;
+      liveUserId = next;
     };
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -59,6 +69,7 @@ export function AuthProvider({ children, onUserChange }: AuthProviderProps) {
       });
     return () => {
       active = false;
+      liveUserId = null;
       data.subscription.unsubscribe();
     };
   }, []);

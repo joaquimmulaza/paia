@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminFeature } from '@/features/admin/types';
@@ -23,6 +23,30 @@ const catalog = vi.hoisted(() => ({
   listFeaturedStores: vi.fn(async () => []),
 }));
 vi.mock('@/features/catalog/api', () => catalog);
+
+// Sessão observável: mudar de conta volta a desenhar quem usa useAuth, como no AuthProvider.
+const auth = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  const store = {
+    state: { session: { user: { id: 'admin-1' } } as unknown, loading: false },
+    set(next: { session: unknown; loading: boolean }) {
+      store.state = next;
+      listeners.forEach((l) => l());
+    },
+    subscribe(l: () => void) {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+  };
+  return store;
+});
+vi.mock('@/features/auth/AuthProvider', async () => {
+  const { useSyncExternalStore } = await import('react');
+  return {
+    useAuth: () => useSyncExternalStore(auth.subscribe, () => auth.state),
+    currentUserId: () => (auth.state.session as { user: { id: string } } | null)?.user.id ?? null,
+  };
+});
 
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('sonner', async (importOriginal) => ({
@@ -93,6 +117,7 @@ function rowOf(storeName: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auth.set({ session: { user: { id: 'admin-1' } }, loading: false });
   api.listFeatures.mockResolvedValue(FEATURES);
   catalog.listStores.mockResolvedValue([SALGADOS]);
 });
@@ -287,6 +312,22 @@ describe('FeaturesPage (A07), adicionar', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
+  it('se a sessão mudar enquanto guarda, não mostra «Destaque guardado.» ao utilizador seguinte', async () => {
+    const { user, form } = await openForm();
+    let finish: (id: string) => void = () => {};
+    api.saveFeature.mockImplementation(() => new Promise<string>((r) => (finish = r)));
+    await user.type(within(form).getByLabelText('Loja'), 'Salg');
+    await user.click(await within(form).findByRole('radio', { name: 'Salgados do Bloco' }));
+    await user.click(within(form).getByRole('button', { name: 'Guardar destaque' }));
+    await waitFor(() => expect(api.saveFeature).toHaveBeenCalled());
+    act(() => auth.set({ session: { user: { id: 'outra-pessoa' } }, loading: false }));
+    finish('novo');
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Adicionar destaque' })).toBeNull(),
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
   it('Cancelar fecha o formulário e devolve o foco a «Adicionar destaque»', async () => {
     const { user, form } = await openForm();
     await user.click(within(form).getByRole('button', { name: 'Cancelar' }));
@@ -307,10 +348,10 @@ describe('FeaturesPage (A07), ordem e estado', () => {
       'aria-disabled',
       'true',
     );
-    expect(screen.getByRole('button', { name: 'Subir Acessórios do Kiko' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    // Um destaque desligado não entra na ordem: sem setas, só «— Sem ordem».
+    expect(screen.queryByRole('button', { name: 'Subir Acessórios do Kiko' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Descer Acessórios do Kiko' })).toBeNull();
+    expect(within(rowOf('Acessórios do Kiko')).getByText('Sem ordem')).toBeInTheDocument();
   });
 
   it('«Subir» no segundo envia a lista completa dos ativos pela nova ordem; o foco fica no botão', async () => {
@@ -375,6 +416,46 @@ describe('FeaturesPage (A07), ordem e estado', () => {
     await waitFor(() => expect(api.listFeatures).toHaveBeenCalledTimes(2));
   });
 
+  it('depois de desligar, a linha passa para o fim e o foco fica no interruptor dela', async () => {
+    const user = userEvent.setup({ delay: null });
+    // Como a base: desligado, sai da ordem e aparece com os desligados, no fim.
+    api.setFeatureActive.mockImplementation(async (id: string, active: boolean) => {
+      const moved = { ...FEATURES.find((f) => f.id === id)!, isActive: active, isLive: false };
+      api.listFeatures.mockResolvedValue([...FEATURES.filter((f) => f.id !== id), moved]);
+    });
+    mount();
+    await user.click(await screen.findByRole('switch', { name: 'Destaque de Doces da Ana ativo' }));
+    await waitFor(() => expect(api.listFeatures).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(within(rowOf('Doces da Ana')).getByText('Desligado')).toBeInTheDocument(),
+    );
+    const rows = screen.getAllByRole('row');
+    expect(rows[rows.length - 1]).toBe(rowOf('Doces da Ana'));
+    const sw = screen.getByRole('switch', { name: 'Destaque de Doces da Ana ativo' });
+    expect(sw).toHaveAttribute('aria-checked', 'false');
+    await waitFor(() => expect(sw).toHaveFocus());
+  });
+
+  it('depois de ligar, o foco fica no interruptor da linha que voltou à ordem', async () => {
+    const user = userEvent.setup({ delay: null });
+    api.setFeatureActive.mockImplementation(async (id: string, active: boolean) => {
+      const moved = { ...FEATURES.find((f) => f.id === id)!, isActive: active, position: 4 };
+      api.listFeatures.mockResolvedValue([...FEATURES.filter((f) => f.isActive), moved]);
+    });
+    mount();
+    await user.click(
+      await screen.findByRole('switch', { name: 'Destaque de Acessórios do Kiko ativo' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Subir Acessórios do Kiko' })).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('switch', { name: 'Destaque de Acessórios do Kiko ativo' }),
+      ).toHaveFocus(),
+    );
+  });
+
   it('se ligar falhar, mostra o erro num alerta', async () => {
     const user = userEvent.setup({ delay: null });
     api.setFeatureActive.mockRejectedValue(new Error('Esta loja não está aprovada.'));
@@ -412,6 +493,22 @@ describe('FeaturesPage (A07), remover', () => {
     expect(api.removeFeature).toHaveBeenCalledWith('b');
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await waitFor(() => expect(api.listFeatures).toHaveBeenCalledTimes(2));
+  });
+
+  it('se a sessão mudar enquanto remove, não mostra «Destaque removido.»', async () => {
+    const user = userEvent.setup({ delay: null });
+    let finish: () => void = () => {};
+    api.removeFeature.mockImplementation(() => new Promise<void>((r) => (finish = r)));
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Remover Doces da Ana' }));
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remover destaque' }),
+    );
+    await waitFor(() => expect(api.removeFeature).toHaveBeenCalled());
+    act(() => auth.set({ session: { user: { id: 'outra-pessoa' } }, loading: false }));
+    finish();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(toast).not.toHaveBeenCalled();
   });
 
   it('se remover falhar, o erro aparece dentro da confirmação', async () => {

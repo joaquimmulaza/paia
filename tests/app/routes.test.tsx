@@ -7,7 +7,10 @@ const auth = vi.hoisted(() => ({
   state: { session: null as unknown, loading: false },
   useAuth: vi.fn(),
 }));
-vi.mock('@/features/auth/AuthProvider', () => ({ useAuth: auth.useAuth }));
+vi.mock('@/features/auth/AuthProvider', () => ({
+  useAuth: auth.useAuth,
+  currentUserId: () => null,
+}));
 
 const api = vi.hoisted(() => ({
   signUp: vi.fn(),
