@@ -10,6 +10,9 @@ const api = vi.hoisted(() => ({
   getMyProfile: vi.fn(),
 }));
 vi.mock('@/features/auth/api', () => api);
+vi.mock('@/features/auth/AuthProvider', () => ({
+  useAuth: () => ({ session: { user: { id: 'user-test' } }, loading: false }),
+}));
 
 const toast = vi.hoisted(() => vi.fn());
 vi.mock('sonner', async (importOriginal) => ({

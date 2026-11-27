@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -74,5 +75,32 @@ describe('cache do perfil entre sessões', () => {
     await act(async () => resolveB(profile('Utilizador Novo')));
     expect(await screen.findByText('Utilizador Novo')).toBeInTheDocument();
     expect(screen.queryByText('Utilizador Antigo')).toBeNull();
+  });
+
+  it('ao mudar de conta, as consultas públicas do catálogo ficam e as da conta saem', async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } });
+    let client!: ReturnType<typeof useQueryClient>;
+    function Probe() {
+      client = useQueryClient();
+      return null;
+    }
+    render(
+      <Providers>
+        <Probe />
+        <p>pronto</p>
+      </Providers>,
+    );
+    await screen.findByText('pronto');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const categories = [{ id: '1', name: 'Bolos', slug: 'bolos' }];
+    client.setQueryData(['catalog', 'categories'], categories);
+    client.setQueryData(['me', 'profile', 'user-a'], profile('Utilizador Antigo'));
+
+    act(() => mocks.state.listener?.('SIGNED_OUT', null));
+
+    expect(client.getQueryData(['catalog', 'categories'])).toEqual(categories);
+    expect(client.getQueryData(['me', 'profile', 'user-a'])).toBeUndefined();
   });
 });

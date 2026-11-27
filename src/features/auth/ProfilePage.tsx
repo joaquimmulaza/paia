@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { getMyProfile, signOut, type MyProfile } from './api';
 import { AuthErrorAlert, errorMessage } from './AuthErrorAlert';
+import { useAuth } from './AuthProvider';
 import { AFFILIATION_LABEL } from './labels';
 
 /** Iniciais do primeiro e do último nome («João Manuel» → «JM»). */
@@ -24,7 +25,12 @@ type Scope = 'local' | 'global';
 export function ProfilePage() {
   useDocumentTitle('Perfil');
   const navigate = useNavigate();
-  const profile = useQuery({ queryKey: ['my-profile'], queryFn: getMyProfile });
+  const userId = useAuth().session?.user.id ?? null;
+  const profile = useQuery({
+    queryKey: ['me', 'profile', userId],
+    queryFn: getMyProfile,
+    enabled: userId !== null,
+  });
   const [pendingScope, setPendingScope] = useState<Scope | null>(null);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const sending = useRef(false);
