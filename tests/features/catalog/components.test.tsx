@@ -385,6 +385,16 @@ describe('CatalogSkeleton', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('na variante de secção só tem os blocos dos cartões, sem título, pesquisa nem chips', () => {
+    const { container } = render(
+      <CatalogSkeleton variant="section" label="A carregar lojas…" onRetry={vi.fn()} />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('A carregar lojas…');
+    const blocks = container.querySelector('[aria-hidden="true"]');
+    expect(blocks?.querySelector('.h-\\[52px\\]')).toBeNull();
+    expect(blocks?.querySelector('.grid')).not.toBeNull();
+  });
+
   it('limpa o temporizador ao desmontar', () => {
     vi.useFakeTimers();
     const { unmount } = render(<CatalogSkeleton label="A carregar produtos…" onRetry={vi.fn()} />);

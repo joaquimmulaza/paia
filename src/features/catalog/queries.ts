@@ -14,13 +14,23 @@ export interface ProductFilters {
   categorySlug?: string;
   storeSlug?: string;
   sort: ProductSort;
+  /** Tamanho de cada página; sem ele, o da api (24). */
+  limit?: number;
 }
 
 export const catalogKeys = {
   all: ['catalog'] as const,
   categories: () => ['catalog', 'categories'] as const,
   products: (f: ProductFilters) =>
-    ['catalog', 'products', f.q ?? '', f.categorySlug ?? '', f.storeSlug ?? '', f.sort] as const,
+    [
+      'catalog',
+      'products',
+      f.q ?? '',
+      f.categorySlug ?? '',
+      f.storeSlug ?? '',
+      f.sort,
+      f.limit ?? null,
+    ] as const,
   product: (id: string) => ['catalog', 'product', id] as const,
   stores: (p: { q?: string; categorySlug?: string }) =>
     ['catalog', 'stores', p.q ?? '', p.categorySlug ?? ''] as const,

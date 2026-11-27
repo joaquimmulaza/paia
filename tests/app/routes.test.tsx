@@ -17,6 +17,16 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/features/auth/api', () => api);
 
+const catalog = vi.hoisted(() => ({
+  listCategories: vi.fn(async () => []),
+  searchProducts: vi.fn(async () => ({ items: [], next: null })),
+  getProduct: vi.fn(),
+  listStores: vi.fn(async () => []),
+  getStore: vi.fn(),
+  listFeaturedStores: vi.fn(async () => []),
+}));
+vi.mock('@/features/catalog/api', () => catalog);
+
 import { routes } from '@/app/router';
 import { renderRoutes } from '../utils/renderRoutes';
 
@@ -66,9 +76,9 @@ describe('rotas da aplicação', () => {
   });
 
   it.each([
-    ['/', 'Catálogo em construção'],
+    ['/', 'O que procuras hoje?'],
     ['/explorar', 'Em construção'],
-    ['/lojas', 'Em construção'],
+    ['/lojas', 'Lojas'],
     ['/pedidos', 'Em construção'],
   ])('%s mostra o título «%s»', async (path, title) => {
     renderRoutes(routes, path);

@@ -8,6 +8,8 @@ type CatalogSkeletonProps = {
   /** O que está a carregar, só para leitores de ecrã («A carregar produtos…»). */
   label: string;
   onRetry: () => void;
+  /** `page` (S04) imita o ecrã inteiro; `section` só os cartões, para uma secção de um ecrã já desenhado. */
+  variant?: 'page' | 'section';
 };
 
 const block = 'rounded-sm bg-brand-tint';
@@ -29,7 +31,7 @@ function CardBlock() {
  * O temporizador só arranca ao montar: em cada nova tentativa, o pai deve remontá-lo
  * (por exemplo com `key={tentativa}`) para os 10 s recomeçarem.
  */
-export function CatalogSkeleton({ label, onRetry }: CatalogSkeletonProps) {
+export function CatalogSkeleton({ label, onRetry, variant = 'page' }: CatalogSkeletonProps) {
   const [slow, setSlow] = useState(false);
 
   useEffect(() => {
@@ -50,13 +52,17 @@ export function CatalogSkeleton({ label, onRetry }: CatalogSkeletonProps) {
         </Button>
       )}
       <div aria-hidden="true" className="flex flex-col gap-5">
-        <div className={`${block} h-9.5 w-4/5`} />
-        <div className="h-[52px] rounded-md border-2 border-ink bg-surface" />
-        <div className="flex gap-2">
-          <div className={`${block} h-11 w-18`} />
-          <div className={`${block} h-11 w-22.5`} />
-          <div className={`${block} h-11 w-24`} />
-        </div>
+        {variant === 'page' && (
+          <>
+            <div className={`${block} h-9.5 w-4/5`} />
+            <div className="h-[52px] rounded-md border-2 border-ink bg-surface" />
+            <div className="flex gap-2">
+              <div className={`${block} h-11 w-18`} />
+              <div className={`${block} h-11 w-22.5`} />
+              <div className={`${block} h-11 w-24`} />
+            </div>
+          </>
+        )}
         <div className="grid grid-cols-2 gap-x-4 gap-y-4.5">
           <CardBlock />
           <CardBlock />
