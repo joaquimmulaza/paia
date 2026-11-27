@@ -1,5 +1,5 @@
 // Catálogo sem sessão, com os dados ilustrativos do seed (aplicado pelo `db:reset` do verify).
-// Não depende dos destaques: o admin-features.spec muda-os e pode correr ao mesmo tempo.
+// Não depende dos destaques: o admin-features.spec muda-os (os ficheiros correm um de cada vez).
 import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations, localSql } from './support';
 
@@ -38,12 +38,8 @@ test('pesquisa sem acentos, abre o produto e a loja', async ({ page }) => {
 
 test('uma pesquisa sem resultados numa categoria diz o que não encontrou', async ({ page }) => {
   await page.goto('/explorar');
-  await page
-    .getByRole('group', { name: 'Filtrar por categoria' })
-    .getByRole('button', {
-      name: 'Salgados',
-    })
-    .click();
+  const categories = page.getByRole('group', { name: 'Filtrar por categoria' });
+  await categories.getByRole('button', { name: 'Salgados' }).click();
   await page.getByLabel('Pesquisar produtos e lojas').fill('pizza');
   await expect(page.getByText('Nada para «pizza» em Salgados')).toBeVisible();
 });
