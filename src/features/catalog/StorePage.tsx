@@ -30,7 +30,7 @@ function StoreMark({ store }: { store: StoreDetail }) {
       <span className={box}>
         <img
           src={publicImageUrl('store-media', store.logoPath)}
-          alt={store.name}
+          alt=""
           className="block size-full object-cover"
         />
       </span>
@@ -91,7 +91,10 @@ function StoreHeader({ store }: { store: StoreDetail }) {
 function StoreProducts({ store }: { store: StoreDetail }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const categoria = searchParams.get('categoria') || null;
+  const requested = searchParams.get('categoria');
+  // Um slug que a loja não tem vale «Tudo».
+  const categoria =
+    requested && store.productCategories.some((c) => c.slug === requested) ? requested : null;
   const products = useProducts({
     storeSlug: store.slug,
     categorySlug: categoria ?? undefined,

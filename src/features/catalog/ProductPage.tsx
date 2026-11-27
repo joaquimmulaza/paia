@@ -37,14 +37,16 @@ function storeLine(product: ProductDetail): string {
 function Photos({ product }: { product: ProductDetail }) {
   const images = [...product.images].sort((a, b) => a.position - b.position);
   const [selected, setSelected] = useState(0);
-  const current = images[selected] ?? images[0];
+  // Um refetch pode trazer menos fotos do que a escolhida: mostra-se (e descreve-se) a primeira.
+  const idx = images[selected] ? selected : 0;
+  const current = images[idx];
   const total = images.length;
   return (
     <div className="flex flex-col gap-2.5">
       <div className="aspect-square overflow-hidden rounded-lg border-2 border-ink">
         <ProductPhoto
           path={current?.path ?? null}
-          alt={`${product.name}, foto ${selected + 1} de ${total}`}
+          alt={`${product.name}, foto ${idx + 1} de ${total}`}
           loading="eager"
           className="[&>svg]:size-10"
         />
@@ -56,7 +58,7 @@ function Photos({ product }: { product: ProductDetail }) {
               key={image.path}
               type="button"
               aria-label={`Foto ${i + 1}`}
-              aria-current={i === selected ? 'true' : undefined}
+              aria-current={i === idx ? 'true' : undefined}
               onClick={() => setSelected(i)}
               className={cn(
                 'size-14 flex-none cursor-pointer overflow-hidden rounded-md border-2 border-ink bg-brand-tint p-0',
@@ -77,10 +79,12 @@ function Photos({ product }: { product: ProductDetail }) {
 
 /** s-cta: quantidade, total e «Adicionar ao carrinho». Esgotado, só o botão desativado. */
 function BuyBar({ product }: { product: ProductDetail }) {
-  const [qty, setQty] = useState(1);
+  const [rawQty, setQty] = useState(1);
   const soldOut = product.stock <= 0;
+  // Um refetch pode baixar o stock abaixo da quantidade escolhida.
+  const qty = Math.min(rawQty, Math.max(1, product.stock));
   const stepper = cn(
-    'flex h-10 w-11 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink',
+    'flex h-11 w-11 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink',
     'touch-manipulation [-webkit-tap-highlight-color:transparent] active:not-disabled:bg-brand-tint',
     'disabled:cursor-not-allowed disabled:text-line-muted',
     focusRing,
@@ -98,7 +102,7 @@ function BuyBar({ product }: { product: ProductDetail }) {
               type="button"
               aria-label="Diminuir quantidade"
               disabled={qty <= 1}
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              onClick={() => setQty(Math.max(1, qty - 1))}
               className={stepper}
             >
               <Minus aria-hidden="true" className="size-4.5" />
@@ -107,13 +111,14 @@ function BuyBar({ product }: { product: ProductDetail }) {
               aria-live="polite"
               className="min-w-7 text-center font-display text-base font-bold"
             >
+              <span className="sr-only">Quantidade: </span>
               {qty}
             </output>
             <button
               type="button"
               aria-label="Aumentar quantidade"
               disabled={qty >= product.stock}
-              onClick={() => setQty((q) => Math.min(product.stock, q + 1))}
+              onClick={() => setQty(Math.min(product.stock, qty + 1))}
               className={stepper}
             >
               <Plus aria-hidden="true" className="size-4.5" />
@@ -220,8 +225,7 @@ export function ProductPage() {
   const data = product.data;
   return (
     <PageShell
-      // Sem o produto, não há barra de compra: fica a navegação, em «Explorar».
-      nav={data ? undefined : 'explorar'}
+      // Sem navegação inferior em nenhum estado: o rodapé não salta entre carregar e carregado.
       footer={data ? <BuyBar key={data.id} product={data} /> : undefined}
       header={<AppHeader start={<BackButton />} actions={<CartButton />} />}
       className="gap-4.5"

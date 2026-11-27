@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@/components/ui/sonner';
@@ -176,6 +176,31 @@ describe('ProductPage (C03), conteúdo', () => {
   });
 });
 
+describe('ProductPage (C03), sem navegação inferior em nenhum estado', () => {
+  const NAV = { name: 'Navegação principal' };
+
+  it('a carregar', () => {
+    api.getProduct.mockReturnValue(new Promise(() => {}));
+    renderProduct();
+    expect(screen.queryByRole('navigation', NAV)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toBeInTheDocument();
+  });
+
+  it('com erro', async () => {
+    api.getProduct.mockRejectedValue(new Error('Sem ligação. Tenta outra vez.'));
+    renderProduct();
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('navigation', NAV)).not.toBeInTheDocument();
+  });
+
+  it('não encontrado', async () => {
+    api.getProduct.mockRejectedValue(new Error('Não encontrámos o que procuras.'));
+    renderProduct();
+    await screen.findByRole('heading', { name: 'Não encontrámos o que procuras.' });
+    expect(screen.queryByRole('navigation', NAV)).not.toBeInTheDocument();
+  });
+});
+
 describe('ProductPage (C03), fotografias', () => {
   const THREE = [
     { path: 'p/c.jpg', position: 2 },
@@ -201,6 +226,21 @@ describe('ProductPage (C03), fotografias', () => {
     expect(thumbs[0]).not.toHaveAttribute('aria-current');
     const second = screen.getByRole('img', { name: 'Fatia de bolo de chocolate, foto 2 de 3' });
     expect(second.getAttribute('src')).toContain('p/b.jpg');
+  });
+
+  it('se o refetch trouxer menos fotos, o alt usa a foto realmente mostrada', async () => {
+    const user = userEvent.setup({ delay: null });
+    api.getProduct.mockResolvedValue(detail({ images: THREE }));
+    const { queryClient } = renderProduct();
+    await ready();
+    const thumbs = within(screen.getByRole('group', { name: 'Fotos' })).getAllByRole('button');
+    await user.click(thumbs[2]!);
+    act(() => {
+      queryClient.setQueryData(['catalog', 'product', ID], detail({ images: THREE.slice(0, 2) }));
+    });
+    expect(
+      await screen.findByRole('img', { name: 'Fatia de bolo de chocolate, foto 1 de 2' }),
+    ).toBeInTheDocument();
   });
 
   it('com 1 imagem, não há miniaturas', async () => {
@@ -233,18 +273,56 @@ describe('ProductPage (C03), barra de compra', () => {
     const output = within(qty).getByRole('status');
     expect(output.tagName).toBe('OUTPUT');
     expect(output).toHaveAttribute('aria-live', 'polite');
-    expect(output).toHaveTextContent('1');
+    expect(output).toHaveTextContent('Quantidade: 1');
     expect(less).toBeDisabled();
     expect(screen.getByTestId('cta-total').textContent).toBe(`Total: ${formatKz(1500)}`);
 
     await user.click(more);
-    expect(output).toHaveTextContent('2');
+    expect(output).toHaveTextContent('Quantidade: 2');
     expect(more).toBeDisabled();
     expect(less).toBeEnabled();
     expect(screen.getByTestId('cta-total').textContent).toBe(`Total: ${formatKz(3000)}`);
 
     await user.click(less);
-    expect(output).toHaveTextContent('1');
+    expect(output).toHaveTextContent('Quantidade: 1');
+  });
+
+  it('os botões da quantidade têm pelo menos 44 px de altura', async () => {
+    renderProduct();
+    await ready();
+    const qty = screen.getByRole('group', { name: 'Quantidade' });
+    for (const b of within(qty).getAllByRole('button')) {
+      expect(b.className).toMatch(/(^|\s)h-11(\s|$)/);
+      expect(b.className).not.toMatch(/(^|\s)h-10(\s|$)/);
+    }
+  });
+
+  it('o <output> anuncia «Quantidade: » com contexto', async () => {
+    renderProduct();
+    await ready();
+    const output = within(screen.getByRole('group', { name: 'Quantidade' })).getByRole('status');
+    expect(output.textContent).toBe('Quantidade: 1');
+  });
+
+  it('se o stock baixar num refetch, a quantidade e o total acompanham', async () => {
+    const user = userEvent.setup({ delay: null });
+    api.getProduct.mockResolvedValue(detail({ stock: 5 }));
+    const { queryClient } = renderProduct();
+    await ready();
+    const qty = screen.getByRole('group', { name: 'Quantidade' });
+    const more = within(qty).getByRole('button', { name: 'Aumentar quantidade' });
+    await user.click(more);
+    await user.click(more);
+    await user.click(more);
+    expect(screen.getByTestId('cta-total').textContent).toBe(`Total: ${formatKz(6000)}`);
+    act(() => {
+      queryClient.setQueryData(['catalog', 'product', ID], detail({ stock: 2 }));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('cta-total').textContent).toBe(`Total: ${formatKz(3000)}`),
+    );
+    expect(within(qty).getByRole('status')).toHaveTextContent('Quantidade: 2');
+    expect(more).toBeDisabled();
   });
 
   it('«Adicionar ao carrinho» mostra «Disponível em breve»', async () => {
@@ -278,10 +356,12 @@ describe('ProductPage (C03), voltar e erros', () => {
   it('sem histórico, «Voltar» vai para Explorar', async () => {
     const user = userEvent.setup({ delay: null });
     window.history.replaceState({ idx: 0 }, '');
-    renderProduct(['/lojas', `/produto/${ID}`]);
+    const { router } = renderProduct(['/lojas', `/produto/${ID}`]);
     await ready();
     await user.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(await screen.findByText('Página Explorar')).toBeInTheDocument();
+    // Substitui a entrada: o Voltar seguinte não regressa ao produto.
+    expect(router.state.historyAction).toBe('REPLACE');
   });
 
   it('um produto que não existe mostra «Não encontrámos o que procuras.» e «Voltar a explorar»', async () => {
