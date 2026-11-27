@@ -1285,6 +1285,8 @@ reset role;
 -- Destaque terminado ainda ativo: criar outro para a mesma loja desliga o
 -- terminado na mesma transação e põe o novo no fim da ordem. Um destaque no
 -- ar ou agendado continua a dar FEATURE_EXISTS.
+-- A loja do destaque no ar volta a approved (o teste anterior suspendeu-a).
+update public.stores set status = 'approved' where id = 'a1000000-0000-0000-0000-000000000002';
 select pg_temp.as_user('10000000-0000-0000-0000-000000000009');
 set local role authenticated;
 select set_config('test.end_before',
@@ -1319,10 +1321,10 @@ select results_eq(
 select throws_ok(
   $$ select public.admin_save_store_feature(null, 'a1000000-0000-0000-0000-000000000003', null, null, null, null) $$,
   'P0001', 'FEATURE_EXISTS', '(m) repetir a criação depois de substituir o terminado dá FEATURE_EXISTS');
+reset role;
 select is(
   (select count(*)::int from public.store_features where store_id = 'a1000000-0000-0000-0000-000000000003'),
   2, '(m) a criação repetida não escreveu nada');
-reset role;
 
 -- Posições: as três funções que as atribuem tomam o mesmo trinco de
 -- transação antes de ler max(position), para duas ativações ao mesmo tempo

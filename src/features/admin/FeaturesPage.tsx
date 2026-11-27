@@ -23,6 +23,7 @@ import { tagClass } from '@/features/catalog/components/tag-styles';
 import { currentUserId, useAuth } from '@/features/auth/AuthProvider';
 import { cn, focusRing } from '@/lib/utils';
 import { useDocumentTitle } from '@/lib/use-document-title';
+import { useNow } from '@/lib/use-now';
 import { AddFeatureForm } from './AddFeatureForm';
 import { AdminShell } from './AdminShell';
 import { listFeatures, removeFeature, reorderFeatures, setFeatureActive } from './api';
@@ -45,6 +46,9 @@ const STATUS_TAG: Record<FeatureStatus, string> = {
   store: tagClass.waiting,
 };
 
+/** De quanto em quanto tempo o estado de cada destaque é recalculado com a página aberta. */
+const NOW_INTERVAL_MS = 60_000;
+
 type Direction = 'up' | 'down';
 
 /** Os ativos pela ordem da base (é a ordem do Início); os desligados no fim, sem ordem. */
@@ -61,6 +65,8 @@ export function FeaturesPage() {
   const userId = useAuth().session?.user.id ?? null;
   const featuresKey = adminKeys.features(userId);
   const features = useQuery({ queryKey: featuresKey, queryFn: listFeatures });
+  // O estado (No ar, Agendado, Expirado) muda com a hora: atualiza com a página aberta.
+  const now = useNow(NOW_INTERVAL_MS);
   const [formOpen, setFormOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -133,9 +139,7 @@ export function FeaturesPage() {
     addButton.current?.focus();
   }
 
-  const now = new Date();
   const { active, inactive } = splitByActive(features.data ?? []);
-  const nextPosition = active.reduce((max, f) => Math.max(max, f.position + 1), 0);
 
   return (
     <AdminShell active="destaques">
@@ -230,9 +234,7 @@ export function FeaturesPage() {
           )}
         </section>
 
-        {formOpen && (
-          <AddFeatureForm id="adicionar-destaque" nextPosition={nextPosition} onClose={closeForm} />
-        )}
+        {formOpen && <AddFeatureForm id="adicionar-destaque" onClose={closeForm} />}
       </div>
     </AdminShell>
   );

@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminFeature } from '@/features/admin/types';
 import type { StoreSummary } from '@/features/catalog/types';
 
@@ -192,6 +192,36 @@ describe('FeaturesPage (A07), lista', () => {
   });
 });
 
+describe('FeaturesPage (A07), estado com a página aberta', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('o estado muda sozinho quando o fim passa, com a página aberta (60 s)', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2026-12-01T10:00:00+01:00'));
+    api.listFeatures.mockResolvedValue([
+      feature({
+        id: 'z',
+        storeName: 'Fim Próximo',
+        isLive: true,
+        endsAt: '2026-12-01T10:00:30+01:00',
+      }),
+    ]);
+    mount();
+    await screen.findByRole('link', { name: 'Fim Próximo' });
+    expect(within(rowOf('Fim Próximo')).getByText('No ar')).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(59_000);
+    });
+    expect(within(rowOf('Fim Próximo')).getByText('No ar')).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(within(rowOf('Fim Próximo')).getByText('Expirado')).toBeInTheDocument();
+  });
+});
+
 describe('FeaturesPage (A07), adicionar', () => {
   async function openForm() {
     const user = userEvent.setup({ delay: null });
@@ -227,7 +257,8 @@ describe('FeaturesPage (A07), adicionar', () => {
     await waitFor(() => expect(toast).toHaveBeenCalledWith('Destaque guardado.'));
     expect(api.saveFeature).toHaveBeenCalledWith({
       storeId: 'loja-salgados',
-      position: 3,
+      // A posição é a da base (fim da ordem), para duas criações ao mesmo tempo não colidirem.
+      position: null,
       startsAt: null,
       endsAt: null,
       note: 'Feira de dezembro',

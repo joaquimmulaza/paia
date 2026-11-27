@@ -37,12 +37,10 @@ const errorClass = 'm-0 font-body text-small font-bold text-danger';
 
 type Props = {
   id: string;
-  /** Posição do novo destaque: a seguir ao último ativo. */
-  nextPosition: number;
   onClose: () => void;
 };
 
-export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
+export function AddFeatureForm({ id, onClose }: Props) {
   const queryClient = useQueryClient();
   const ids = {
     title: useId(),
@@ -97,7 +95,7 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (save.isPending) return;
-    const found = validateFeature({ storeId, position: nextPosition, start, end, note });
+    const found = validateFeature({ storeId, position: null, start, end, note });
     setErrors(found);
     // O foco vai para o primeiro campo com erro, pela ordem do formulário.
     const firstInvalid = found.store
@@ -113,12 +111,14 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
       firstInvalid.current?.focus();
       return;
     }
-    if (found.position || !storeId) return;
+    if (!storeId) return;
     const { startsAt, endsAt } = parseFeatureDates({ start, end });
     const trimmed = note.trim();
     save.mutate({
       storeId,
-      position: nextPosition,
+      // A base põe o novo destaque no fim da ordem dos ativos, sob o mesmo trinco das
+      // outras funções de posição: duas criações ao mesmo tempo não ficam com a mesma.
+      position: null,
       startsAt,
       endsAt,
       note: trimmed === '' ? null : trimmed,
@@ -263,9 +263,7 @@ export function AddFeatureForm({ id, nextPosition, onClose }: Props) {
           </p>
         </fieldset>
 
-        <AuthErrorAlert
-          message={errors.position ?? (save.isError ? errorMessage(save.error) : null)}
-        />
+        <AuthErrorAlert message={save.isError ? errorMessage(save.error) : null} />
 
         <div className="flex flex-wrap items-center gap-2.5">
           <Button type="submit" variant="primary" size="sm" loading={save.isPending}>

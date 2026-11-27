@@ -52,6 +52,16 @@ test('um produto por publicar, aberto pela URL, não aparece', async ({ page }) 
   await expect(page.getByText('Coxinhas de frango (4)')).toHaveCount(0);
 });
 
+test('um URL de produto que não é um id diz que não encontrou, sem «Tentar outra vez»', async ({
+  page,
+}) => {
+  await page.goto('/produto/123');
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Não encontrámos o que procuras.' }),
+  ).toBeVisible();
+  await expect(page.getByText('Algo correu mal. Tenta outra vez.')).toHaveCount(0);
+});
+
 test.describe('acessibilidade (axe)', () => {
   const pages: { url: string; ready: string }[] = [
     { url: '/', ready: 'Novidades na comunidade' },
