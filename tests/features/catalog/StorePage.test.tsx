@@ -137,7 +137,9 @@ describe('StorePage (C04), conteúdo', () => {
     api.getStore.mockResolvedValue(storeDetail({ logoPath: 's/logo.png' }));
     renderStore();
     await ready();
-    const img = screen.getByRole('img', { name: 'Doces da Ana' });
+    const img = document.querySelector('img')!;
+    // O h1 já diz o nome: o logótipo é decorativo.
+    expect(img).toHaveAttribute('alt', '');
     expect(img.getAttribute('src')).toContain('store-media');
     expect(img.getAttribute('src')).toContain('s/logo.png');
   });
@@ -214,6 +216,20 @@ describe('StorePage (C04), produtos', () => {
         expect.objectContaining({ storeSlug: 'doces-da-ana', categorySlug: 'bebidas' }),
       ),
     );
+  });
+
+  it('uma ?categoria= desconhecida vale «Tudo»: sem filtro e o chip «Tudo» ativo', async () => {
+    renderStore(['/loja/doces-da-ana?categoria=nao-existe']);
+    await ready();
+    const chips = screen.getByRole('group', { name: 'Filtrar produtos da loja' });
+    expect(within(chips).getByRole('button', { name: 'Tudo' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await waitFor(() => expect(api.searchProducts).toHaveBeenCalled());
+    for (const [args] of api.searchProducts.mock.calls) {
+      expect(args.categorySlug).toBeUndefined();
+    }
   });
 
   it('«Ver mais produtos» junta a página seguinte e leva o foco ao primeiro novo', async () => {

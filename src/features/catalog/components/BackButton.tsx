@@ -3,6 +3,8 @@ import { ChevronLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { iconButtonClass } from './icon-button';
 
+// Acoplamento: `idx` é um detalhe interno do react-router 6; se mudar, `hasHistory` passa a dar
+// sempre falso e o Voltar vai sempre para `fallback`. Os testes simulam-no com `replaceState`.
 /** O BrowserRouter guarda em `history.state.idx` a posição na pilha; 0 é a primeira página aberta. */
 function hasHistory(): boolean {
   const state: unknown = window.history.state;
@@ -18,7 +20,7 @@ export function BackButton({ fallback = '/explorar' }: { fallback?: string }) {
     <button
       type="button"
       aria-label="Voltar"
-      onClick={() => (hasHistory() ? navigate(-1) : navigate(fallback))}
+      onClick={() => (hasHistory() ? navigate(-1) : navigate(fallback, { replace: true }))}
       className={iconButtonClass('surface')}
     >
       <ChevronLeft aria-hidden="true" className="size-6" />
