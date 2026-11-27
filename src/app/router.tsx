@@ -1,4 +1,6 @@
-import { createBrowserRouter, type RouteObject } from 'react-router-dom';
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
+import { FeaturesPage } from '@/features/admin/FeaturesPage';
+import { RequireAdmin } from '@/features/admin/RequireAdmin';
 import { ProfilePage } from '@/features/auth/ProfilePage';
 import { SignInPage } from '@/features/auth/SignInPage';
 import { SignUpPage } from '@/features/auth/SignUpPage';
@@ -40,6 +42,17 @@ export const routes: RouteObject[] = [
     element: (
       <RequireAuth>
         <ProfilePage />
+      </RequireAuth>
+    ),
+  },
+  { path: '/admin', element: <Navigate to="/admin/destaques" replace /> },
+  {
+    path: '/admin/destaques',
+    element: (
+      <RequireAuth>
+        <RequireAdmin>
+          <FeaturesPage />
+        </RequireAdmin>
       </RequireAuth>
     ),
   },

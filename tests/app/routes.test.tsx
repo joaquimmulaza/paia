@@ -27,6 +27,16 @@ const catalog = vi.hoisted(() => ({
 }));
 vi.mock('@/features/catalog/api', () => catalog);
 
+const admin = vi.hoisted(() => ({
+  FEATURES_CHANGED: 'A lista mudou. Atualizámos a ordem; tenta outra vez.',
+  listFeatures: vi.fn(async () => []),
+  saveFeature: vi.fn(),
+  setFeatureActive: vi.fn(),
+  removeFeature: vi.fn(),
+  reorderFeatures: vi.fn(),
+}));
+vi.mock('@/features/admin/api', () => admin);
+
 import { routes } from '@/app/router';
 import { renderRoutes } from '../utils/renderRoutes';
 
@@ -94,6 +104,20 @@ describe('rotas da aplicação', () => {
     renderRoutes(routes, path);
     expect(await screen.findByRole('link', { name: tab })).toHaveAttribute('aria-current', 'page');
     expect(document.title).toBe(title);
+  });
+
+  it('/admin redireciona para /admin/destaques (com sessão de administrador)', async () => {
+    auth.state = { session: { user: { id: 'u1' } }, loading: false };
+    api.getMyProfile.mockResolvedValue({ ...student, isAdmin: true });
+    const { router } = renderRoutes(routes, '/admin');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Destaques' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/admin/destaques');
+  });
+
+  it('/admin/destaques sem sessão vai para /entrar com voltar', async () => {
+    const { router } = renderRoutes(routes, '/admin/destaques');
+    expect(await screen.findByRole('heading', { name: 'Entra no PAIÁ' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?voltar=%2Fadmin%2Fdestaques');
   });
 
   it('uma rota desconhecida mostra «Página não encontrada» com ligação ao início', async () => {

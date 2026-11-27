@@ -73,7 +73,7 @@ function buttonVariants(...args: Parameters<typeof buttonVariantsBase>) {
   return cn(buttonVariantsBase(...args));
 }
 
-type ButtonProps = React.ComponentProps<'button'> &
+type ButtonProps = React.ComponentPropsWithoutRef<'button'> &
   VariantProps<typeof buttonVariantsBase> & {
     asChild?: boolean;
     /** Mostra o indicador, marca `aria-busy` e não aceita mais toques. O texto deve dizer o que acontece («A enviar…»). */
@@ -90,16 +90,21 @@ function Spinner() {
   );
 }
 
-function Button({
-  className,
-  variant = 'primary',
-  size = 'default',
-  asChild = false,
-  loading = false,
-  disabled,
-  children,
-  ...props
-}: ButtonProps) {
+// forwardRef: em React 18 o `ref` não chega a um componente de função sem ele (e o Radix
+// precisa dele num Trigger com asChild, para devolver o foco ao fechar).
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    className,
+    variant = 'primary',
+    size = 'default',
+    asChild = false,
+    loading = false,
+    disabled,
+    children,
+    ...props
+  },
+  ref,
+) {
   const hasName = Boolean(props['aria-label'] || props['aria-labelledby']);
 
   React.useEffect(() => {
@@ -128,6 +133,7 @@ function Button({
     // O Slot exige um só filho: o indicador entra dentro dele através do Slottable.
     return (
       <Slot.Root
+        ref={ref}
         data-slot="button"
         data-variant={variant}
         className={classes}
@@ -143,6 +149,7 @@ function Button({
 
   return (
     <button
+      ref={ref}
       type="button"
       data-slot="button"
       data-variant={variant}
@@ -155,7 +162,7 @@ function Button({
       {variant === 'icon' && loading ? null : children}
     </button>
   );
-}
+});
 
 export { Button, buttonVariants };
 export type { ButtonProps };
