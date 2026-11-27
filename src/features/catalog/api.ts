@@ -13,10 +13,19 @@ import type {
 } from './types';
 
 const DEFAULT_LIMIT = 24;
+/** A base corta `p_limit` a 50; pedimos sempre uma linha a mais para saber se há outra página. */
+const MAX_LIMIT = 49;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Reply {
   data: unknown;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
+}
+
+/** 22P02 (sintaxe inválida, por exemplo um uuid mal formado num URL) é «não encontrado». */
+function errorCode(error: { message: string; code?: string }): string {
+  return error.code === '22P02' ? 'NOT_FOUND' : error.message;
 }
 
 /** Executa o pedido; qualquer falha (erro da base ou rede) vira `Error` com texto PT-AO. */
@@ -27,7 +36,7 @@ async function run<T>(request: () => PromiseLike<Reply>): Promise<T[]> {
   } catch {
     throw new Error(MESSAGES.generic);
   }
-  if (result.error) throw new Error(translateDbError(result.error.message));
+  if (result.error) throw new Error(translateDbError(errorCode(result.error)));
   return Array.isArray(result.data) ? (result.data as T[]) : [];
 }
 
@@ -79,7 +88,7 @@ export async function searchProducts(p: {
   after?: ProductCursor;
   limit?: number;
 }): Promise<{ items: CatalogProduct[]; next: ProductCursor | null }> {
-  const limit = p.limit ?? DEFAULT_LIMIT;
+  const limit = Math.min(Math.max(1, p.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
   const rows = await run<ProductRow>(() =>
     supabase.rpc('search_products', {
       p_q: p.q || undefined,
@@ -90,13 +99,13 @@ export async function searchProducts(p: {
       p_after_created_at: p.after?.createdAt,
       p_after_price: p.after?.priceKz,
       p_after_id: p.after?.id,
-      p_limit: limit,
+      p_limit: limit + 1,
     }),
   );
-  const items = rows.map(toProduct);
+  const items = rows.slice(0, limit).map(toProduct);
   const last = items[items.length - 1];
   const next =
-    last && items.length >= limit
+    last && rows.length > limit
       ? { createdAt: last.createdAt, priceKz: last.priceKz, id: last.id }
       : null;
   return { items, next };
@@ -119,6 +128,7 @@ interface ProductDetailRow {
 }
 
 export async function getProduct(id: string): Promise<ProductDetail> {
+  if (!UUID_RE.test(id)) throw new Error(MESSAGES.notFound);
   const rows = await run<ProductDetailRow>(() => supabase.rpc('get_product', { p_id: id }));
   const r = rows[0];
   if (!r) throw new Error(MESSAGES.notFound);

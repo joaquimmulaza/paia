@@ -88,7 +88,7 @@ describe('searchProducts', () => {
       p_after_created_at: '2026-11-26T10:00:00.123456+00:00',
       p_after_price: 500,
       p_after_id: 'abc',
-      p_limit: 10,
+      p_limit: 11,
     });
   });
 
@@ -101,14 +101,28 @@ describe('searchProducts', () => {
     expect(args.p_q).toBeUndefined();
   });
 
-  it('next é o cursor do último item quando vêm `limit` itens', async () => {
-    rpc.mockResolvedValue({ data: [row(1), row(2)], error: null });
+  it('pede limit + 1 linhas para saber se há mais', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await searchProducts({ sort: 'recentes', limit: 2 });
+    expect((rpc.mock.calls[0]![1] as Record<string, unknown>).p_limit).toBe(3);
+  });
+
+  it('com a linha extra, devolve `limit` itens e o cursor do último mostrado', async () => {
+    rpc.mockResolvedValue({ data: [row(1), row(2), row(3)], error: null });
     const r = await searchProducts({ sort: 'recentes', limit: 2 });
+    expect(r.items.map((i) => i.id)).toEqual(['id-1', 'id-2']);
     expect(r.next).toEqual({
       createdAt: '2026-11-26T10:00:00.123452+00:00',
       priceKz: 2000,
       id: 'id-2',
     });
+  });
+
+  it('uma última página cheia (exatamente `limit`) não anuncia mais', async () => {
+    rpc.mockResolvedValue({ data: [row(1), row(2)], error: null });
+    const r = await searchProducts({ sort: 'recentes', limit: 2 });
+    expect(r.items).toHaveLength(2);
+    expect(r.next).toBeNull();
   });
 
   it('next é null quando vêm menos de `limit` itens', async () => {
@@ -131,6 +145,8 @@ describe('searchProducts', () => {
   });
 });
 
+const P1 = '0b7c2f4e-1a2b-4c3d-8e9f-0123456789ab';
+
 const detail = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
   name: 'Bolo',
@@ -151,13 +167,28 @@ const detail = (over: Record<string, unknown> = {}) => ({
 describe('getProduct', () => {
   it('sem linhas, lança «Não encontrámos o que procuras.»', async () => {
     rpc.mockResolvedValue({ data: [], error: null });
-    await expect(getProduct('x')).rejects.toThrow('Não encontrámos o que procuras.');
-    expect(rpc).toHaveBeenCalledWith('get_product', { p_id: 'x' });
+    await expect(getProduct(P1)).rejects.toThrow('Não encontrámos o que procuras.');
+    expect(rpc).toHaveBeenCalledWith('get_product', { p_id: P1 });
+  });
+
+  it('um id que não é uuid dá «não encontrado» sem chamar a base', async () => {
+    for (const bad of ['123', 'x', '', `${P1}0`, 'zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz']) {
+      await expect(getProduct(bad)).rejects.toThrow('Não encontrámos o que procuras.');
+    }
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('o 22P02 do Postgres (sintaxe inválida) vira «não encontrado»', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { code: '22P02', message: 'invalid input syntax for type uuid: "123"' },
+    });
+    await expect(getProduct(P1)).rejects.toThrow('Não encontrámos o que procuras.');
   });
 
   it('converte a avaliação (texto numérico) em número', async () => {
     rpc.mockResolvedValue({ data: [detail()], error: null });
-    const p = await getProduct('p1');
+    const p = await getProduct(P1);
     expect(p.storeRating).toEqual({ avg: 4.5, count: 3 });
     expect(p.images).toEqual([{ path: 'p1/a.jpg', position: 0 }]);
   });
@@ -167,7 +198,7 @@ describe('getProduct', () => {
       data: [detail({ store_rating_avg: null, store_rating_count: 0 })],
       error: null,
     });
-    expect((await getProduct('p1')).storeRating).toBeNull();
+    expect((await getProduct(P1)).storeRating).toBeNull();
   });
 
   it('aceita categoria escondida e imagens em falta', async () => {
@@ -175,7 +206,7 @@ describe('getProduct', () => {
       data: [detail({ category_name: null, category_slug: null, images: null })],
       error: null,
     });
-    const p = await getProduct('p1');
+    const p = await getProduct(P1);
     expect(p.categoryName).toBeNull();
     expect(p.categorySlug).toBeNull();
     expect(p.images).toEqual([]);
