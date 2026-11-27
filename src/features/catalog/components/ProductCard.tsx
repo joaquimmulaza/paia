@@ -29,7 +29,7 @@ const stretchedLink = [
   'text-ink no-underline outline-hidden touch-manipulation [-webkit-tap-highlight-color:transparent]',
   "after:absolute after:inset-0 after:rounded-lg after:content-['']",
   'focus-visible:after:outline-solid focus-visible:after:outline-[length:var(--focus-ring-width)] focus-visible:after:outline-offset-[var(--focus-ring-offset)] focus-visible:after:outline-[color:var(--ring-color,var(--focus-ring))]',
-];
+].join(' ');
 
 export function ProductCard({ product, showStore = false, className }: ProductCardProps) {
   const stock = stockLabel(product.stock);
@@ -54,14 +54,15 @@ export function ProductCard({ product, showStore = false, className }: ProductCa
       <div className="relative aspect-square overflow-hidden rounded-t-[calc(var(--radius-lg)-2px)] border-b-2 border-ink">
         <ProductPhoto
           path={product.mainImagePath}
-          alt={product.name}
+          // Decorativa: o nome já está na ligação do h3, mesmo ao lado.
+          alt=""
           className={soldOut ? 'bg-paper' : undefined}
         />
         {tag && <span className={cn(tag.className, 'absolute top-2 left-2')}>{tag.text}</span>}
       </div>
       <div className="flex flex-col gap-0.5 px-3 pt-2.5 pb-3">
         <h3 className="m-0 font-body text-body font-bold wrap-break-word hyphens-auto">
-          <Link to={`/produto/${product.id}`} className={cn(stretchedLink)}>
+          <Link to={`/produto/${product.id}`} className={stretchedLink}>
             {product.name}
           </Link>
         </h3>
@@ -70,7 +71,8 @@ export function ProductCard({ product, showStore = false, className }: ProductCa
             {product.storeName}
           </p>
         )}
-        <div className="mt-1.5 flex items-center justify-between gap-2">
+        {/* Quebra linha quando o cartão é estreito: o preço nunca se parte nem passa por baixo do botão. */}
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
           <span
             data-testid="product-price"
             className={cn(
@@ -84,7 +86,7 @@ export function ProductCard({ product, showStore = false, className }: ProductCa
           {/* Fica acima da ligação esticada e é a sua própria paragem de Tab. */}
           <Button
             variant="icon"
-            className="relative z-1"
+            className="relative z-1 ml-auto"
             aria-label={
               soldOut ? `${product.name} esgotado` : `Adicionar ${product.name} ao carrinho`
             }
