@@ -3,10 +3,10 @@ import { render } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router-dom';
 import { routerFuture, routerProviderFuture } from '@/app/router-future';
 
-/** Monta as rotas num router de memória, com os mesmos future flags da aplicação. */
-export function renderRoutes(routes: RouteObject[], initialEntry: string) {
+/** Monta as rotas num router de memória, com os mesmos future flags da aplicação. Com várias entradas, abre a última. */
+export function renderRoutes(routes: RouteObject[], initialEntry: string | string[]) {
   const router = createMemoryRouter(routes, {
-    initialEntries: [initialEntry],
+    initialEntries: Array.isArray(initialEntry) ? initialEntry : [initialEntry],
     future: routerFuture,
   });
   const queryClient = new QueryClient({

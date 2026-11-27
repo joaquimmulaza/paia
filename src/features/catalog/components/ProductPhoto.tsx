@@ -7,17 +7,19 @@ type ProductPhotoProps = {
   path: string | null;
   /** O nome do produto. */
   alt: string;
+  /** A foto principal de C03 carrega logo; nos cartões e miniaturas, só quando aparece. */
+  loading?: 'lazy' | 'eager';
   className?: string;
 };
 
 /** Com `path`, a fotografia; sem ela, o fundo brand-tint com o ícone de imagem, sem texto. */
-export function ProductPhoto({ path, alt, className }: ProductPhotoProps) {
+export function ProductPhoto({ path, alt, loading = 'lazy', className }: ProductPhotoProps) {
   if (path) {
     return (
       <img
         src={publicImageUrl('product-media', path)}
         alt={alt}
-        loading="lazy"
+        loading={loading}
         decoding="async"
         className={cn('block size-full object-cover', className)}
       />

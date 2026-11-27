@@ -12,6 +12,8 @@ type EmptyStateProps = {
   icon?: LucideIcon;
   /** Para a página levar o foco ao título (por exemplo, depois de alargar a pesquisa). */
   titleRef?: Ref<HTMLHeadingElement>;
+  /** h1 quando o estado vazio é o ecrã inteiro (por exemplo, não encontrado). */
+  headingLevel?: 'h1' | 'h2';
   className?: string;
 };
 
@@ -21,9 +23,11 @@ export function EmptyState({
   action,
   icon: Icon = Search,
   titleRef,
+  headingLevel = 'h2',
   className,
 }: EmptyStateProps) {
   const titleId = useId();
+  const Heading = headingLevel;
   return (
     <section
       role="status"
@@ -39,7 +43,7 @@ export function EmptyState({
       >
         <Icon className="size-8" />
       </span>
-      <h2
+      <Heading
         id={titleId}
         ref={titleRef}
         // Focável só por código, sem anel: o foco serve para o leitor de ecrã ler o título.
@@ -47,7 +51,7 @@ export function EmptyState({
         className="m-0 font-display text-title font-bold wrap-break-word outline-none"
       >
         {title}
-      </h2>
+      </Heading>
       <p className="m-0 font-body text-body">{text}</p>
       {action}
     </section>

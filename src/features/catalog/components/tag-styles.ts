@@ -9,6 +9,8 @@ export const tagClass = {
   new: cn(base, 'border-ink bg-brand text-ink -rotate-4 motion-reduce:rotate-0'),
   waiting: cn(base, 'bg-warning-tint text-warning'),
   soldout: cn(base, 'border-ink bg-ink text-on-ink'),
+  /** Categoria (p-tag--neutral): fundo surface, texto e contorno ink. */
+  neutral: cn(base, 'border-ink bg-surface text-ink'),
   done: cn(base, 'bg-success-tint text-success'),
   /** «Promovida» (X01): fundo surface, texto e contorno ink. Nunca verde. */
   promoted: cn(base, 'border-ink bg-surface text-ink'),

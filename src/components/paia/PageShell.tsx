@@ -8,10 +8,12 @@ type PageShellProps = {
   children: ReactNode;
   /** Separador ativo da navegação inferior. Sem ele, não há navegação (entrar, criar conta). */
   nav?: BottomNavTab;
+  /** Barra fixa de ação em baixo (s-cta), em vez da navegação. Fica no fluxo: não tapa o conteúdo. */
+  footer?: ReactNode;
   className?: string;
 };
 
-export function PageShell({ header, children, nav, className }: PageShellProps) {
+export function PageShell({ header, children, nav, footer, className }: PageShellProps) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-paper text-ink">
       {header}
@@ -21,6 +23,7 @@ export function PageShell({ header, children, nav, className }: PageShellProps) 
           <BottomNav active={nav} />
         </div>
       )}
+      {!nav && footer && <div className="sticky bottom-0">{footer}</div>}
     </div>
   );
 }

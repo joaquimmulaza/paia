@@ -5,7 +5,13 @@ import { cn, focusRing } from '@/lib/utils';
 import type { StoreSummary } from '../types';
 import { storeInitials, storeMeta } from './store-text';
 
-export function StoreLink({ store, className }: { store: StoreSummary; className?: string }) {
+type StoreLinkProps = { className?: string } & (
+  | { store: StoreSummary; meta?: never }
+  /** Com `meta`, basta o nome e o slug; a linha de baixo é esse texto (C03). */
+  | { store: Pick<StoreSummary, 'name' | 'slug'>; meta: string }
+);
+
+export function StoreLink({ store, meta, className }: StoreLinkProps) {
   return (
     <Link
       to={`/loja/${store.slug}`}
@@ -26,7 +32,7 @@ export function StoreLink({ store, className }: { store: StoreSummary; className
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <strong className="font-body text-body font-bold wrap-break-word">{store.name}</strong>
         <span className="font-body text-caption font-medium text-ink-muted">
-          {storeMeta(store, 'Ainda sem avaliações')}
+          {meta ?? storeMeta(store as StoreSummary, 'Ainda sem avaliações')}
         </span>
       </span>
       <ChevronRight aria-hidden="true" className="size-6 flex-none" />
