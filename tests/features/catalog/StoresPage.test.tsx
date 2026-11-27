@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Toaster } from '@/components/ui/sonner';
@@ -115,6 +115,17 @@ describe('StoresPage (C05)', () => {
     expect(screen.getByRole('searchbox', { name: 'Pesquisar lojas' })).toHaveValue('kiko');
     await screen.findByRole('heading', { name: 'Doces da Ana' });
     expect(api.listStores).toHaveBeenCalledWith({ q: 'kiko' });
+  });
+
+  it('o campo acompanha o q do URL quando muda sem ser a escrever (ligação, Voltar)', async () => {
+    const { router } = renderStores('/lojas?q=bolo');
+    const field = () => screen.getByRole('searchbox', { name: 'Pesquisar lojas' });
+    expect(field()).toHaveValue('bolo');
+    await act(() => router.navigate('/lojas?q=pão'));
+    await waitFor(() => expect(field()).toHaveValue('pão'));
+    await act(() => router.navigate(-1));
+    await waitFor(() => expect(field()).toHaveValue('bolo'));
+    await screen.findByRole('heading', { name: 'Doces da Ana' });
   });
 
   it('os chips começam em «Todas» e filtram pela categoria no URL', async () => {

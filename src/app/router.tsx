@@ -2,6 +2,7 @@ import { createBrowserRouter, type RouteObject } from 'react-router-dom';
 import { ProfilePage } from '@/features/auth/ProfilePage';
 import { SignInPage } from '@/features/auth/SignInPage';
 import { SignUpPage } from '@/features/auth/SignUpPage';
+import { ExplorePage } from '@/features/catalog/ExplorePage';
 import { HomePage } from '@/features/catalog/HomePage';
 import { StoresPage } from '@/features/catalog/StoresPage';
 import { RequireAuth, RequireGuest } from './guards';
@@ -11,7 +12,7 @@ import { routerFuture } from './router-future';
 
 export const routes: RouteObject[] = [
   { path: '/', element: <HomePage /> },
-  { path: '/explorar', element: <PlaceholderPage active="explorar" /> },
+  { path: '/explorar', element: <ExplorePage /> },
   { path: '/lojas', element: <StoresPage /> },
   { path: '/pedidos', element: <PlaceholderPage active="pedidos" /> },
   {
