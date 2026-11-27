@@ -10,7 +10,9 @@ export function storeInitials(name: string): string {
     .filter((w) => w && !CONNECTORS.has(w.toLowerCase()));
   const first = words.at(0) ?? '';
   const last = words.length > 1 ? (words.at(-1) ?? '') : '';
-  return (first.charAt(0) + last.charAt(0)).toLocaleUpperCase('pt-AO');
+  // Array.from separa por pontos de código: não parte pares substitutos nem emoji.
+  const initial = (word: string) => Array.from(word)[0] ?? '';
+  return (initial(first) + initial(last)).toLocaleUpperCase('pt-AO');
 }
 
 const ratingFormat = new Intl.NumberFormat('pt-AO', {

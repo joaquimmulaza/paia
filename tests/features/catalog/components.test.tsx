@@ -124,7 +124,22 @@ describe('ProductCard', () => {
 
   it('mostra «Novo» para um produto criado há menos de 7 dias', () => {
     wrap(<ProductCard product={product({ createdAt: new Date().toISOString() })} />);
-    expect(screen.getByText('Novo')).toBeInTheDocument();
+    const tag = screen.getByText('Novo');
+    expect(tag).toHaveClass('-rotate-4', 'motion-reduce:rotate-0');
+  });
+
+  it('a fotografia é decorativa (alt vazio): o nome já está na ligação ao lado', () => {
+    const { container } = wrap(<ProductCard product={product({ mainImagePath: 'p/1.webp' })} />);
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute('alt', '');
+  });
+
+  it('o rodapé quebra linha para o preço não transbordar ao lado do botão', () => {
+    wrap(<ProductCard product={product({ priceKz: 1234567 })} />);
+    const price = screen.getByTestId('product-price');
+    expect(price).toHaveClass('whitespace-nowrap');
+    expect(price.parentElement).toHaveClass('flex-wrap');
   });
 
   it('mostra a loja só com showStore', () => {

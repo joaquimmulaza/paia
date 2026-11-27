@@ -24,7 +24,11 @@ function CardBlock() {
   );
 }
 
-/** Blocos estáticos (não piscam nem se movem). Ao fim de 10 s, «Está a demorar.» e «Tentar outra vez». */
+/**
+ * Blocos estáticos (não piscam nem se movem). Ao fim de 10 s, «Está a demorar.» e «Tentar outra vez».
+ * O temporizador só arranca ao montar: em cada nova tentativa, o pai deve remontá-lo
+ * (por exemplo com `key={tentativa}`) para os 10 s recomeçarem.
+ */
 export function CatalogSkeleton({ label, onRetry }: CatalogSkeletonProps) {
   const [slow, setSlow] = useState(false);
 

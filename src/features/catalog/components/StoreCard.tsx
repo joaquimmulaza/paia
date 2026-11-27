@@ -8,6 +8,7 @@ import { storeInitials, storeMeta } from './store-text';
 
 type StoreCardProps = {
   store: StoreSummary | FeaturedStore;
+  /** Só existe a variante de destaque (fundo ink); fica explícita para quando vier a de lista (p-scard--list). */
   variant: 'feature';
   /** Nível do título: h3 dentro de uma secção (C01), h2 numa lista de topo (C05). */
   headingLevel?: 'h2' | 'h3';
