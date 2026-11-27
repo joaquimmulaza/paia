@@ -1,10 +1,9 @@
 // Ecrã C05 · Lojas.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppHeader } from '@/components/paia/AppHeader';
 import { PageShell } from '@/components/paia/PageShell';
 import { Button } from '@/components/ui/button';
-import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { CartButton } from './components/CartButton';
 import { CatalogSkeleton } from './components/CatalogSkeleton';
@@ -15,35 +14,14 @@ import { SearchField } from './components/SearchField';
 import { StoreCard } from './components/StoreCard';
 import { StoreLink } from './components/StoreLink';
 import { useCategories, useStores } from './queries';
-import { MAX_QUERY_LENGTH, parseExploreParams } from './search-params';
-
-const SEARCH_DELAY_MS = 300;
+import { parseExploreParams } from './search-params';
+import { useSearchText } from './use-search-text';
 
 export function StoresPage() {
   useDocumentTitle('Lojas');
   const [searchParams, setSearchParams] = useSearchParams();
   const { q, categoria } = parseExploreParams(searchParams);
-  const [text, setText] = useState(q);
-  const debounced = useDebouncedValue(text, SEARCH_DELAY_MS);
-
-  // Depois da pausa, o q passa para o URL (sem nova entrada no histórico). Só quando o valor
-  // com atraso muda: o setSearchParams muda a cada navegação e reescreveria um q já limpo.
-  const pushed = useRef(debounced);
-  useEffect(() => {
-    if (pushed.current === debounced) return;
-    pushed.current = debounced;
-    const next = debounced.trim().slice(0, MAX_QUERY_LENGTH);
-    setSearchParams(
-      (prev) => {
-        if ((prev.get('q') ?? '') === next) return prev;
-        const sp = new URLSearchParams(prev);
-        if (next) sp.set('q', next);
-        else sp.delete('q');
-        return sp;
-      },
-      { replace: true },
-    );
-  }, [debounced, setSearchParams]);
+  const [text, setText] = useSearchText();
 
   function setCategory(slug: string | null) {
     setSearchParams(

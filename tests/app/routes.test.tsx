@@ -77,7 +77,7 @@ describe('rotas da aplicação', () => {
 
   it.each([
     ['/', 'O que procuras hoje?'],
-    ['/explorar', 'Em construção'],
+    ['/explorar', 'Explorar'],
     ['/lojas', 'Lojas'],
     ['/pedidos', 'Em construção'],
   ])('%s mostra o título «%s»', async (path, title) => {
