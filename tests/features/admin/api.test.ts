@@ -85,6 +85,15 @@ describe('saveFeature', () => {
     });
   });
 
+  it('sem posição envia p_position null (a base põe no fim)', async () => {
+    rpc.mockResolvedValue({ data: 'novo-id', error: null });
+    await saveFeature({ storeId: 's1', position: null, startsAt: null, endsAt: null, note: null });
+    expect(rpc).toHaveBeenCalledWith(
+      'admin_save_store_feature',
+      expect.objectContaining({ p_position: null }),
+    );
+  });
+
   it('FEATURE_EXISTS vira «Esta loja já está em destaque.»', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'FEATURE_EXISTS' } });
     await expect(

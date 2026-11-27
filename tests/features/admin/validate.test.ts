@@ -25,6 +25,24 @@ describe('validateFeature', () => {
     expect(validateFeature({ ...ok, position: 0 }).position).toBeUndefined();
   });
 
+  it('sem posição (nula) é válido: a base põe o destaque no fim', () => {
+    expect(validateFeature({ ...ok, position: null })).toEqual({});
+  });
+
+  it('a nota conta como a base: espaços seguidos valem um, invisíveis não contam', () => {
+    expect(noteLength('a  \n\n  b')).toBe(3);
+    expect(noteLength('a\u200bb\u00adc\ufeff')).toBe(3);
+    expect(noteLength('a\u00a0\u00a0b')).toBe(3);
+  });
+
+  it('a nota conta pontos de código, como char_length (um emoji vale um)', () => {
+    expect(noteLength('😀'.repeat(280))).toBe(280);
+    expect(validateFeature({ ...ok, note: '😀'.repeat(280) }).note).toBeUndefined();
+    expect(validateFeature({ ...ok, note: `${'x '.repeat(200)}\n\n${'y'.repeat(79)}` }).note).toBe(
+      'A nota pode ter até 280 caracteres.',
+    );
+  });
+
   it('a nota conta sem os espaços das pontas e aceita até 280', () => {
     expect(NOTE_MAX).toBe(280);
     expect(noteLength(`  ${'x'.repeat(280)}  `)).toBe(280);

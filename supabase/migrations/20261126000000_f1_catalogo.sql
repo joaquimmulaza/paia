@@ -754,6 +754,11 @@ grant execute on function public.list_featured_stores() to anon, authenticated;
 --       barreira.
 --     * Lojas: guardar e ligar bloqueiam a linha da loja FOR SHARE e exigem
 --       approved, para a loja não mudar de estado a meio.
+--     * Posições: guardar, ligar e ordenar tomam primeiro o mesmo trinco de
+--       transação (pg_advisory_xact_lock com a chave
+--       'public.store_features:admin_position'), antes de qualquer linha,
+--       para duas ativações ou criações ao mesmo tempo não lerem o mesmo
+--       max(position) e para a ordem dos trincos ser sempre a mesma.
 -- ---------------------------------------------------------------------------
 -- is_live quer dizer «elegível para C01» (private.feature_is_shown: loja
 -- approved, ativo e dentro do período). Não conta com o limite de 10 nem com
@@ -801,7 +806,12 @@ grant execute on function public.admin_list_store_features() to authenticated;
 --   recusa-o e o 23505 é traduzido para FEATURE_EXISTS (nunca chega cru ao
 --   cliente). O mesmo vale para mudar um destaque para outra loja que já
 --   tenha um ativo.
--- * p_position nulo: 0 ao criar, a posição atual ao alterar.
+-- * p_position nulo: o fim da ordem dos destaques admin ativos ao criar, a
+--   posição atual ao alterar.
+-- * Criar para uma loja cujo destaque admin ativo já terminou (ends_at <=
+--   now()) desliga o terminado na mesma transação e cria o novo: o histórico
+--   fica e o índice único deixa de o contar. Um destaque ativo no ar ou
+--   agendado continua a dar FEATURE_EXISTS.
 -- * Uma nota vazia ou só com espaços fica nula.
 -- * Toda a entrada é validada antes de qualquer escrita, para nenhum 23514
 --   cru chegar ao cliente.
@@ -822,6 +832,7 @@ declare
   v_uid uuid := (select auth.uid());
   v_note text;
   v_id uuid;
+  v_position integer;
   v_constraint text;
 begin
   if not (select private.is_admin()) then
@@ -841,6 +852,8 @@ begin
     raise exception using errcode = 'P0001', message = 'INVALID_PERIOD';
   end if;
 
+  perform pg_advisory_xact_lock(hashtext('public.store_features:admin_position'));
+
   if p_id is not null then
     perform 1 from public.store_features f where f.id = p_id and f.source = 'admin' for update;
     if not found then
@@ -853,10 +866,26 @@ begin
     raise exception using errcode = 'P0001', message = 'STORE_NOT_APPROVED';
   end if;
 
+  if p_id is null then
+    update public.store_features f
+       set is_active = false,
+           updated_by = v_uid
+     where f.store_id = p_store_id and f.source = 'admin' and f.is_active
+       and f.ends_at is not null and f.ends_at <= now();
+
+    if p_position is null then
+      select coalesce(max(f.position) + 1, 0) into v_position
+        from public.store_features f
+       where f.source = 'admin' and f.is_active;
+    else
+      v_position := p_position;
+    end if;
+  end if;
+
   begin
     if p_id is null then
       insert into public.store_features (store_id, source, position, starts_at, ends_at, is_active, note, created_by, updated_by)
-      values (p_store_id, 'admin', coalesce(p_position, 0), p_starts_at, p_ends_at, true, v_note, v_uid, v_uid)
+      values (p_store_id, 'admin', v_position, p_starts_at, p_ends_at, true, v_note, v_uid, v_uid)
       returning id into v_id;
     else
       update public.store_features f
@@ -905,6 +934,8 @@ begin
   if not (select private.is_admin()) then
     raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
   end if;
+
+  perform pg_advisory_xact_lock(hashtext('public.store_features:admin_position'));
 
   select f.is_active, f.store_id, f.position into v_current, v_store_id, v_position
     from public.store_features f
@@ -989,6 +1020,8 @@ begin
   if not (select private.is_admin()) then
     raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
   end if;
+
+  perform pg_advisory_xact_lock(hashtext('public.store_features:admin_position'));
 
   perform 1
      from public.store_features f

@@ -25,7 +25,8 @@ export interface AdminFeatureRow {
 export interface SaveFeatureArgs {
   p_id: string | null;
   p_store_id: string;
-  p_position: number;
+  /** Nula: ao criar, o fim da ordem dos ativos; ao alterar, a posição atual. */
+  p_position: number | null;
   p_starts_at: string | null;
   p_ends_at: string | null;
   p_note: string | null;
@@ -50,7 +51,7 @@ export interface AdminFeature {
 export interface SaveFeatureInput {
   id?: string;
   storeId: string;
-  position: number;
+  position: number | null;
   startsAt: string | null;
   endsAt: string | null;
   note: string | null;
