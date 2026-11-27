@@ -16,19 +16,22 @@ const admin = {
 
 test.describe.configure({ mode: 'serial' });
 
-/**
- * Põe os destaques no estado do seed, para o teste poder correr outra vez sem `db:reset`:
- * Salgados do Bloco sem destaque e Gelados Fresquinhos em destaque, a seguir aos outros.
- */
-function resetFeatures() {
+/** Os destaques como estavam antes do teste (no `verify`, os do seed), linha a linha, em JSON. */
+let featuresBefore = '[]';
+
+function snapshotFeatures(): string {
+  return localSql(`select coalesce(json_agg(f), '[]') from public.store_features f`);
+}
+
+/** Repõe exatamente as linhas guardadas: mesmos ids, ordem, períodos, autores e datas. */
+function restoreFeatures(json: string) {
+  const literal = json.replaceAll("'", "''");
   localSql(`
-    delete from public.store_features where source = 'admin' and store_id = '${SALGADOS}';
-    insert into public.store_features (store_id, source, position, is_active)
-    select '${GELADOS}', 'admin', (select coalesce(max(position), -1) + 1 from public.store_features), true
-    where not exists (
-      select 1 from public.store_features
-      where store_id = '${GELADOS}' and source = 'admin' and is_active
-    );
+    begin;
+    delete from public.store_features;
+    insert into public.store_features
+      select * from json_populate_recordset(null::public.store_features, '${literal}');
+    commit;
   `);
 }
 
@@ -49,10 +52,19 @@ function communityStores(page: Page) {
 }
 
 test.beforeAll(() => {
-  resetFeatures();
+  featuresBefore = snapshotFeatures();
+  // O teste parte do estado do seed. Se uma execução anterior foi interrompida antes do
+  // afterAll, corre `npm run db:reset`.
+  const seedState = localSql(`
+    select
+      exists (select 1 from public.store_features where store_id = '${GELADOS}' and is_active)
+      and not exists (select 1 from public.store_features where store_id = '${SALGADOS}')
+  `);
+  expect(seedState, 'destaques do seed (corre npm run db:reset)').toBe('t');
 });
 
 test.afterAll(() => {
+  restoreFeatures(featuresBefore);
   localSql(
     `delete from public.admin_users where user_id = (select id from auth.users where email = '${admin.email}')`,
   );
@@ -100,17 +112,29 @@ test('remove e adiciona destaques, e o Início acompanha', async ({ page }) => {
   await expect(form).toBeHidden();
   await expect(list.getByRole('link', { name: 'Salgados do Bloco' })).toBeVisible();
 
-  // Subir até à posição 0 (a primeira linha da lista).
+  // Subir até à posição 0 (a primeira linha da lista). Cada «Subir» envia a ordem completa;
+  // um clique enquanto a ordenação anterior corre é ignorado pela página, por isso o passo
+  // repete-se até a primeira linha ser Salgados, sem nunca ler o estado sem esperar.
+  const reorders = { started: 0, statuses: [] as number[] };
+  const isReorder = (url: string) => url.includes('/rpc/admin_reorder_store_features');
+  page.on('request', (r) => {
+    if (isReorder(r.url())) reorders.started += 1;
+  });
+  page.on('response', (r) => {
+    if (isReorder(r.url())) reorders.statuses.push(r.status());
+  });
   const up = list.getByRole('button', { name: 'Subir Salgados do Bloco' });
   const firstRow = list.getByRole('row').nth(1);
-  for (let i = 0; i < 10; i++) {
-    if ((await up.getAttribute('aria-disabled')) === 'true') break;
-    const reordered = page.waitForResponse(
-      (r) => r.url().includes('/rpc/admin_reorder_store_features') && r.ok(),
-    );
-    await up.click();
-    await reordered;
-  }
+  await expect(async () => {
+    if (!(await firstRow.textContent())?.includes('Salgados do Bloco')) {
+      await up.click({ timeout: 2_000 });
+    }
+    await expect(firstRow).toContainText('Salgados do Bloco', { timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  // Todas as ordenações chegaram ao fim e nenhuma falhou (um erro da RPC aparece aqui).
+  await expect.poll(() => reorders.statuses.length).toBe(reorders.started);
+  expect(reorders.statuses.length).toBeGreaterThan(0);
+  expect(reorders.statuses.filter((status) => status >= 300)).toEqual([]);
   await expect(firstRow.getByRole('link', { name: 'Salgados do Bloco' })).toBeVisible();
   await expect(up).toHaveAttribute('aria-disabled', 'true');
   await expectNoAxeViolations(page);

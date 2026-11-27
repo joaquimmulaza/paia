@@ -81,7 +81,7 @@ Os passos 3 e 7 comparam com o último commit: se mudares os tokens ou as migra�
 
 O `verify` **não** arranca o Supabase. Se a stack local estiver parada, o passo `db:reset` falha com a mensagem da CLI: corre `npm run db:start` primeiro.
 
-O `npm run dev` fixa a porta 5173 (`--strictPort`): se estiver ocupada, falha em vez de usar outra. O passo `e2e` arranca o `npm run dev` sozinho, ou reaproveita um que já esteja a correr. Cria contas novas em cada execução, com emails fictícios (`@exemplo.test`). O teste dos destaques usa o `docker exec supabase_db_paia psql` para promover a conta e, no fim, tira-lhe outra vez o papel de administrador. Também repõe os destaques do seed antes de começar, por isso o `npm run e2e` pode correr várias vezes sem `db:reset`.
+O `npm run dev` fixa a porta 5173 (`--strictPort`): se estiver ocupada, falha em vez de usar outra. O passo `e2e` arranca o `npm run dev` sozinho, ou reaproveita um que já esteja a correr. Cria contas novas em cada execução, com emails fictícios (`@exemplo.test`). O teste dos destaques usa o `docker exec supabase_db_paia psql` para promover a conta e, no fim, tira-lhe outra vez o papel de administrador. No fim, repõe também os destaques exatamente como estavam, por isso o `npm run e2e` pode correr várias vezes sem `db:reset`. Os ficheiros do e2e correm um de cada vez (`workers: 1`), para o catálogo nunca ver os destaques a meio da mudança. Se uma execução for interrompida a meio, corre `npm run db:reset` antes da seguinte.
 
 ## Contas criadas fora da aplicação
 

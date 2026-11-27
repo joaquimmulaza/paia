@@ -6,6 +6,9 @@ const baseURL = 'http://localhost:5173';
 export default defineConfig({
   testDir: 'e2e',
   retries: 0,
+  // Um ficheiro de cada vez: o admin-features.spec muda os destaques do Início, e os outros
+  // ficheiros (catalog.spec) nunca o devem ver a meio.
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL,
