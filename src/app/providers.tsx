@@ -12,8 +12,9 @@ export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(createQueryClient);
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Ao mudar de conta, nada da anterior pode aparecer (por exemplo num aparelho partilhado). */}
-      <AuthProvider onUserChange={() => queryClient.clear()}>
+      {/* Ao mudar de conta, nada da anterior pode aparecer (por exemplo num aparelho partilhado):
+          saem as consultas `['me', …]`; as públicas `['catalog', …]` ficam em cache. */}
+      <AuthProvider onUserChange={() => queryClient.removeQueries({ queryKey: ['me'] })}>
         {children}
         <Toaster />
       </AuthProvider>
