@@ -72,13 +72,16 @@ Antes do passo 1, confirma que o `.env.local` existe e tem `VITE_SUPABASE_URL` e
 7. `db:types` + `git diff`: falha se `src/types/database.ts` não coincidir com os tipos gerados da base local.
 8. `db:test`: testes da base de dados (pgTAP): RLS, permissões e restrições.
 9. `build`: build de produção.
-10. `e2e`: registo, sessão e perfil no navegador, com análise de acessibilidade (axe, WCAG 2.2 AA) em `/entrar`, `/criar-conta` e `/perfil`.
+10. `e2e`: no navegador, com análise de acessibilidade (axe, WCAG 2.2 AA):
+    - registo, sessão e perfil (`/entrar`, `/criar-conta`, `/perfil`);
+    - catálogo sem sessão: Início, pesquisa, produto, loja, lojas e produto escondido;
+    - destaques: uma conta nova é promovida a administradora, remove e adiciona destaques em `/admin/destaques`, e o Início acompanha.
 
 Os passos 3 e 7 comparam com o último commit: se mudares os tokens ou as migrações, faz commit dos ficheiros gerados.
 
 O `verify` **não** arranca o Supabase. Se a stack local estiver parada, o passo `db:reset` falha com a mensagem da CLI: corre `npm run db:start` primeiro.
 
-O `npm run dev` fixa a porta 5173 (`--strictPort`): se estiver ocupada, falha em vez de usar outra. O passo `e2e` arranca o `npm run dev` sozinho, ou reaproveita um que já esteja a correr. Cria uma conta nova em cada execução, com um email fictício (`@exemplo.test`).
+O `npm run dev` fixa a porta 5173 (`--strictPort`): se estiver ocupada, falha em vez de usar outra. O passo `e2e` arranca o `npm run dev` sozinho, ou reaproveita um que já esteja a correr. Cria contas novas em cada execução, com emails fictícios (`@exemplo.test`). O teste dos destaques usa o `docker exec supabase_db_paia psql` para promover a conta e, no fim, tira-lhe outra vez o papel de administrador. Também repõe os destaques do seed antes de começar, por isso o `npm run e2e` pode correr várias vezes sem `db:reset`.
 
 ## Contas criadas fora da aplicação
 
@@ -94,9 +97,37 @@ O papel de administrador vem só da tabela `public.admin_users`. Para promover o
 
 **Nunca** grava o email real no ficheiro nem faz commit dele. Correr o script no projeto remoto também precisa da autorização do responsável (ver abaixo).
 
-## Dados de exemplo
+## Catálogo e dados ilustrativos
 
-O `supabase/seed.sql` tem só dados ilustrativos e corre só localmente (no `db:reset`). Nunca o apliques ao projeto remoto.
+**O que o seed cria.** O `supabase/seed.sql` corre no fim de cada `npm run db:reset` e enche o catálogo local com dados inventados:
+
+- 5 lojas aprovadas e 1 à espera de aprovação, com produtos que cobrem os casos do ecrã: esgotado, «Últimas N», «Novo», um por publicar, um ocultado pela moderação, um nome longo e um preço alto;
+- 3 destaques em «Lojas da comunidade»: Doces da Ana e Gelados Fresquinhos no ar, e Mimos da Teresa já terminado (só aparece na administração);
+- contas dos donos e da equipa, todas com emails `@exemplo.test`. Não servem para entrar: a palavra-passe é aleatória e ninguém a conhece.
+
+As categorias vêm da migração de F1, não do seed. Não há dados da UGS.
+
+**Só local.** Estes dados nunca vão para o projeto remoto: não apliques o `seed.sql` lá, nem copies as linhas à mão.
+
+**Sem imagens.** Ainda não há fotografias de lojas nem de produtos. Os ecrãs mostram o fundo `brand-tint` com o ícone de imagem. O envio de fotografias chega com a fase F2 (Vender).
+
+**Entrar como administrador local e gerir os destaques:**
+
+1. Com a stack a correr (`npm run db:start`) e a app aberta (`npm run dev`), cria uma conta em http://localhost:5173/criar-conta. Usa um email `@exemplo.test` e uma palavra-passe só tua: não a escrevas em nenhum ficheiro.
+2. Torna-a administradora na base local (troca o email pelo teu):
+
+   ```sh
+   docker exec supabase_db_paia psql -U postgres -c "insert into public.admin_users (user_id) select id from auth.users where email = 'tu@exemplo.test'"
+   ```
+
+   Também podes usar o `supabase/scripts/bootstrap_admin.sql` no Studio local (http://127.0.0.1:55323).
+
+3. Abre http://localhost:5173/admin/destaques (recarrega a página se já a tinhas aberta). Aí podes:
+   - **adicionar** uma loja aprovada com «Adicionar destaque»: entra no fim da lista, com datas de início e fim opcionais;
+   - **mudar a ordem** com «Subir» e «Descer»: a ordem da lista é a ordem no Início, que mostra até 10 lojas;
+   - **ligar e desligar** cada destaque com o interruptor «Ativo»;
+   - **remover** um destaque, depois de confirmares. A loja e os produtos não mudam.
+4. Para deixares de ser administrador: `docker exec supabase_db_paia psql -U postgres -c "delete from public.admin_users where user_id = (select id from auth.users where email = 'tu@exemplo.test')"`. Um `npm run db:reset` também apaga a conta e repõe os destaques do seed.
 
 ## Projeto remoto e deploy
 
