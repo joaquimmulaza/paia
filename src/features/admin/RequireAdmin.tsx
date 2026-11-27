@@ -3,6 +3,7 @@
 // mesmo que contorne este ecrã.
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
+import { Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/paia/AppHeader';
 import { PageShell } from '@/components/paia/PageShell';
@@ -10,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { getMyProfile } from '@/features/auth/api';
 import { AuthErrorAlert, errorMessage } from '@/features/auth/AuthErrorAlert';
 import { useAuth } from '@/features/auth/AuthProvider';
-import { MESSAGES } from '@/lib/errors';
 import { useDocumentTitle } from '@/lib/use-document-title';
 
 export function RequireAdmin({ children }: { children: ReactNode }) {
@@ -42,13 +42,20 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
 }
 
 function NotAllowed() {
-  useDocumentTitle('Sem permissão');
+  useDocumentTitle('Sem acesso');
   return (
     <PageShell header={<AppHeader logo />} className="gap-5">
-      <h1 className="m-0 font-display text-title font-bold text-ink">{MESSAGES.notAllowed}</h1>
-      <p className="m-0 font-body text-body-lg">
-        Esta área é só para a equipa da administração do PAIÁ.
-      </p>
+      <span
+        aria-hidden="true"
+        data-testid="lock-mark"
+        className="flex size-16 items-center justify-center self-start rounded-full border-2 border-ink bg-surface"
+      >
+        <Lock className="size-7" />
+      </span>
+      <h1 className="m-0 font-display text-title font-bold text-ink">
+        Não tens acesso a esta área
+      </h1>
+      <p className="m-0 font-body text-body-lg">É só para a equipa da administração do PAIÁ.</p>
       <Button asChild variant="primary" className="w-full">
         <Link to="/">Voltar ao início</Link>
       </Button>

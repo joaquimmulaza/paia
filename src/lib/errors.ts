@@ -16,7 +16,7 @@ export const MESSAGES = {
   invalidAffiliation: 'Escolhe o teu vínculo à UGS.',
   storeNotApproved: 'Esta loja não está aprovada.',
   invalidPeriod: 'A data de fim tem de ser depois da data de início.',
-  featureExists: 'Esta loja já está em destaque.',
+  featureExists: 'Esta loja já está em destaque. Encontra-a na lista.',
   invalidPosition: 'A ordem tem de ser 0 ou mais.',
   invalidCursor: 'Não foi possível carregar mais resultados. Tenta outra vez.',
 } as const;

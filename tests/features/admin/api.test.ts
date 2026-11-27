@@ -94,11 +94,11 @@ describe('saveFeature', () => {
     );
   });
 
-  it('FEATURE_EXISTS vira «Esta loja já está em destaque.»', async () => {
+  it('FEATURE_EXISTS vira «Esta loja já está em destaque. Encontra-a na lista.»', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'FEATURE_EXISTS' } });
     await expect(
       saveFeature({ storeId: 's1', position: 0, startsAt: null, endsAt: null, note: null }),
-    ).rejects.toThrow('Esta loja já está em destaque.');
+    ).rejects.toThrow('Esta loja já está em destaque. Encontra-a na lista.');
   });
 });
 

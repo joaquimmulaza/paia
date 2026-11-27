@@ -1,11 +1,13 @@
 // Ecrã K03 · Perfil (só o que tem destino na F0).
 import { useQuery } from '@tanstack/react-query';
+import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/paia/AppHeader';
 import { PageShell } from '@/components/paia/PageShell';
 import { Button } from '@/components/ui/button';
+import { cn, focusRing } from '@/lib/utils';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { getMyProfile, signOut, type MyProfile } from './api';
 import { AuthErrorAlert, errorMessage } from './AuthErrorAlert';
@@ -124,9 +126,22 @@ function ProfileDetails({ profile }: { profile: MyProfile }) {
 
       {/* Só para a experiência: as funções da administração verificam is_admin. */}
       {profile.isAdmin && (
-        <Button asChild variant="secondary" className="w-full">
-          <Link to="/admin/destaques">Administração</Link>
-        </Button>
+        <nav
+          aria-label="Administração"
+          className="overflow-hidden rounded-lg border-2 border-ink bg-surface shadow-hard-sm"
+        >
+          <Link
+            to="/admin/destaques"
+            className={cn(
+              'flex min-h-14 items-center gap-3 px-4 font-display font-bold text-ink no-underline hover:bg-brand-tint',
+              focusRing,
+            )}
+          >
+            <ShieldCheck aria-hidden="true" className="size-6 shrink-0" />
+            <span className="flex-1">Administração</span>
+            <ChevronRight aria-hidden="true" className="size-5 shrink-0" />
+          </Link>
+        </nav>
       )}
     </>
   );

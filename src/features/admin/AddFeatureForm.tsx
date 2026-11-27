@@ -3,6 +3,7 @@
 // Luanda e uma nota interna. Valida antes da API; os erros da API aparecem num alerta.
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { CircleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,17 @@ const SEARCH_DELAY_MS = 300;
 const denseInput = 'min-h-11 border px-3 py-2';
 const fieldClass = 'flex flex-col gap-1.5';
 const hintClass = 'm-0 font-body text-small font-medium text-ink-muted';
-const errorClass = 'm-0 font-body text-small font-bold text-danger';
+const errorClass = 'm-0 flex items-start gap-1.5 font-body text-small font-medium text-danger';
+
+/** p-field__error: ícone de alerta decorativo e o texto, ligados ao campo por aria-describedby. */
+function FieldError({ id, children }: { id: string; children: string }) {
+  return (
+    <p id={id} className={errorClass}>
+      <CircleAlert aria-hidden="true" className="mt-px size-4 shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
 
 type Props = {
   id: string;
@@ -87,7 +98,7 @@ export function AddFeatureForm({ id, onClose }: Props) {
     onSuccess: async (_id, _v, context) => {
       await invalidateFeatures(queryClient);
       // Se a conta mudou a meio, a confirmação não é para quem está agora no aparelho.
-      if (context.userId === currentUserId()) toast('Destaque guardado.');
+      if (context.userId === currentUserId()) toast.success('Destaque guardado.');
       onClose();
     },
   });
@@ -158,11 +169,7 @@ export function AddFeatureForm({ id, onClose }: Props) {
           <p id={ids.storeHint} className={hintClass}>
             Só aparecem lojas aprovadas.
           </p>
-          {errors.store && (
-            <p id={ids.storeError} className={errorClass}>
-              {errors.store}
-            </p>
-          )}
+          {errors.store && <FieldError id={ids.storeError}>{errors.store}</FieldError>}
         </div>
 
         <StoreResults
@@ -188,11 +195,7 @@ export function AddFeatureForm({ id, onClose }: Props) {
               aria-invalid={errors.start ? true : undefined}
               aria-describedby={errors.start ? ids.startError : undefined}
             />
-            {errors.start && (
-              <p id={ids.startError} className={errorClass}>
-                {errors.start}
-              </p>
-            )}
+            {errors.start && <FieldError id={ids.startError}>{errors.start}</FieldError>}
           </div>
           <div className={fieldClass}>
             <Label htmlFor={ids.end}>Fim (opcional)</Label>
@@ -206,11 +209,7 @@ export function AddFeatureForm({ id, onClose }: Props) {
               aria-invalid={errors.end ? true : undefined}
               aria-describedby={errors.end ? ids.endError : undefined}
             />
-            {errors.end && (
-              <p id={ids.endError} className={errorClass}>
-                {errors.end}
-              </p>
-            )}
+            {errors.end && <FieldError id={ids.endError}>{errors.end}</FieldError>}
           </div>
         </div>
         <p className={hintClass}>Sem datas, o destaque fica no ar até o desligares ou removeres.</p>
@@ -241,11 +240,7 @@ export function AddFeatureForm({ id, onClose }: Props) {
               {count} de {NOTE_MAX} caracteres
             </p>
           </div>
-          {errors.note && (
-            <p id={ids.noteError} className={errorClass}>
-              {errors.note}
-            </p>
-          )}
+          {errors.note && <FieldError id={ids.noteError}>{errors.note}</FieldError>}
         </div>
 
         <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
@@ -298,7 +293,7 @@ function StoreResults({ query, stores, value, onChange }: StoreResultsProps) {
   if (stores.data.length === 0) {
     return (
       <p role="status" className={hintClass}>
-        Não encontrámos lojas aprovadas com esse nome.
+        Não encontrámos lojas aprovadas com esse nome. Experimenta outra palavra.
       </p>
     );
   }

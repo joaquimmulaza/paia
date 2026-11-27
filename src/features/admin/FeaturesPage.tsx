@@ -2,7 +2,7 @@
 // Lista os destaques da administração pela ordem do Início, liga e desliga cada um,
 // muda a ordem com «Subir»/«Descer», adiciona e remove (com confirmação).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Store } from 'lucide-react';
 import { forwardRef, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -26,7 +26,13 @@ import { useDocumentTitle } from '@/lib/use-document-title';
 import { useNow } from '@/lib/use-now';
 import { AddFeatureForm } from './AddFeatureForm';
 import { AdminShell } from './AdminShell';
-import { listFeatures, removeFeature, reorderFeatures, setFeatureActive } from './api';
+import {
+  FEATURES_CHANGED,
+  listFeatures,
+  removeFeature,
+  reorderFeatures,
+  setFeatureActive,
+} from './api';
 import { adminKeys, invalidateFeatures } from './queries';
 
 import {
@@ -43,7 +49,7 @@ const STATUS_TAG: Record<FeatureStatus, string> = {
   scheduled: tagClass.accepted,
   expired: tagClass.neutral,
   off: tagClass.waiting,
-  store: tagClass.waiting,
+  store: tagClass.cancelled,
 };
 
 /** De quanto em quanto tempo o estado de cada destaque é recalculado com a página aberta. */
@@ -161,7 +167,10 @@ export function FeaturesPage() {
         lista é a ordem no Início. Só lojas aprovadas podem estar em destaque.
       </p>
 
-      <AuthErrorAlert message={actionError} />
+      <AuthErrorAlert
+        message={actionError}
+        tone={actionError === FEATURES_CHANGED ? 'warning' : 'danger'}
+      />
 
       <div className="flex flex-wrap items-start gap-4.5">
         <section
@@ -183,9 +192,18 @@ export function FeaturesPage() {
             </div>
           )}
           {features.isSuccess && features.data.length === 0 && (
-            <p className="m-0 p-4 font-body text-body">
-              Ainda não há lojas em destaque. Adiciona a primeira.
-            </p>
+            <div className="flex flex-col items-start gap-3 p-6">
+              <Store aria-hidden="true" className="size-8 text-ink" />
+              <h2 className="m-0 font-display text-lg leading-[22px] font-bold">
+                Ainda não há lojas em destaque.
+              </h2>
+              <p className="m-0 font-body text-body text-ink">
+                Adiciona a primeira para aparecer em «Lojas da comunidade», no Início.
+              </p>
+              <Button variant="primary" size="sm" aria-expanded={formOpen} onClick={openForm}>
+                Adicionar destaque
+              </Button>
+            </div>
           )}
           {features.isSuccess && features.data.length > 0 && (
             <>
@@ -228,7 +246,8 @@ export function FeaturesPage() {
                 </table>
               </div>
               <p className="m-0 border-t border-ink px-3.5 py-2.5 font-body text-small font-medium text-ink-muted">
-                No ar: pode aparecer no Início (até 10 lojas).
+                O Início mostra até 10 destaques «No ar», por esta ordem. Os desligados ficam no
+                fim, sem ordem.
               </p>
             </>
           )}
@@ -287,8 +306,8 @@ function FeatureRow({
   return (
     <tr className="[&:last-child>td]:border-b-0">
       <td className={tdClass}>
-        <div className="flex items-center gap-1">
-          <strong className="min-w-5">
+        <div className="flex min-h-11 items-center gap-1">
+          <strong className={cn('min-w-5', order === null && 'text-ink-muted')}>
             {order ?? (
               <>
                 <span aria-hidden="true">—</span>
@@ -402,7 +421,7 @@ function RemoveFeature({
     onSuccess: (_data, _vars, context) => {
       removed.current = true;
       // Se a conta mudou a meio, a confirmação não é para quem está agora no aparelho.
-      if (context.userId === currentUserId()) toast('Destaque removido.');
+      if (context.userId === currentUserId()) toast.success('Destaque removido.');
       setOpen(false);
     },
     onSettled: () => invalidateFeatures(queryClient),

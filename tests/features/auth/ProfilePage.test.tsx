@@ -93,10 +93,11 @@ describe('ProfilePage (K03)', () => {
   it('um administrador vê a ligação «Administração» para /admin/destaques', async () => {
     api.getMyProfile.mockResolvedValue({ ...student, isAdmin: true });
     mount();
-    expect(await screen.findByRole('link', { name: 'Administração' })).toHaveAttribute(
-      'href',
-      '/admin/destaques',
-    );
+    const link = await screen.findByRole('link', { name: 'Administração' });
+    expect(link).toHaveAttribute('href', '/admin/destaques');
+    // Linha de lista (k-list), não um botão: dentro de <nav aria-label="Administração">.
+    expect(screen.getByRole('navigation', { name: 'Administração' })).toContainElement(link);
+    expect(link).toHaveClass('min-h-14');
   });
 
   it('quem não é administrador não vê a ligação «Administração»', async () => {
