@@ -1,15 +1,12 @@
-# PAIÁ — regras de trabalho para agentes
+# PAIÁ — regras do Claude Code
 
-Lê primeiro o `context.md`: tem as regras de produto e o registo de decisões. A arquitetura está em `docs/superpowers/specs/2026-11-25-paia-desenho-tecnico.md` e os planos de implementação em `docs/superpowers/plans/`.
+As regras comuns a todos os agentes (Cursor, Antigravity, Claude Code) estão no `AGENTS.md`, que é a fonte comum: regras fixas, ordem de leitura, como trabalhar numa tarefa e como atualizar o `docs/ESTADO.md`. Este ficheiro acrescenta só o que é próprio do Claude Code: as skills, os subagentes e os MCP.
 
-## Regras fixas
+@AGENTS.md
 
-- **Só recursos gratuitos e sem CI remoto.** A verificação é sempre local, com `npm run verify`.
-- **Nada no Supabase remoto** (`supabase link`, `db push`, SQL remoto) nem no deploy da Vercel sem autorização explícita do responsável, dada para cada ação.
-- **Nenhum segredo** em código, commits ou ficheiros. O `.env.example` só tem nomes de variáveis.
-- **Interface em PT-AO, com «tu».** Dinheiro em Kz inteiros. Datas mostradas em `Africa/Luanda`.
-- **O visual segue o design system v2.2:** https://claude.ai/artifact/UvUMapjmX7aSVuFZ8Zgk9W (os tokens em `design/tokens.json`). Os ecrãs de referência estão em https://claude.ai/artifact/A7SP9jQzLiYYApzrY2Y6Sy. Não inventar dados da UGS.
-- **Só um agente escreve código num branch de cada vez.**
+## Estado partilhado com os outros agentes
+
+O ledger em `.superpowers/sdd/` continua a ser o registo de trabalho do Claude, mas o git ignora-o e os outros agentes não o leem. Por isso, **no fim de cada tarefa, o agente que coordena atualiza também o `docs/ESTADO.md`, no commit que fecha a tarefa**: a tarefa feita e os commits, a tarefa seguinte, as linhas `Ruling:` novas e os pontos adiados. Com subagentes, o commit que fecha a tarefa é o da última ronda de correções. Se a revisão não pedir correções, é um commit `docs(estado): …` feito logo a seguir à revisão, antes de começar a tarefa seguinte. Se a sessão parar a meio, o `docs/ESTADO.md` diz o que falta, para outro agente poder continuar.
 
 ## Fluxo de trabalho: que skill usar em cada tipo de tarefa
 

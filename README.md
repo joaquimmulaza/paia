@@ -1,6 +1,6 @@
 # PAIÁ
 
-Mercado da comunidade da UGS: compra e venda entre estudantes, professores e funcionários. Esta é a fase F0 (fundação): contas, sessão e perfil.
+Mercado da comunidade da UGS: compra e venda entre estudantes, professores e funcionários. A fase atual e o que já está feito estão em [`docs/ESTADO.md`](docs/ESTADO.md).
 
 As regras de produto e o registo de decisões estão em [`context.md`](context.md). A arquitetura está em [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
@@ -128,6 +128,15 @@ As categorias vêm da migração de F1, não do seed. Não há dados da UGS.
    - **ligar e desligar** cada destaque com o interruptor «Ativo»;
    - **remover** um destaque, depois de confirmares. A loja e os produtos não mudam.
 4. Para deixares de ser administrador: `docker exec supabase_db_paia psql -U postgres -c "delete from public.admin_users where user_id = (select id from auth.users where email = 'tu@exemplo.test')"`. Um `npm run db:reset` também apaga a conta e repõe os destaques do seed.
+
+## Trabalhar com vários agentes
+
+O PAIÁ é desenvolvido com vários agentes (Claude Code, Cursor, Antigravity), alternados quando um deles fica sem tokens. Para que qualquer um continue no ponto certo:
+
+- [`AGENTS.md`](AGENTS.md) tem as regras comuns a todos. O Cursor e o Antigravity leem-no sozinhos. O Cursor tem também `.cursor/rules/paia.mdc`, que remete para ele. O `CLAUDE.md` importa-o e acrescenta as skills e os subagentes do Claude Code.
+- [`docs/ESTADO.md`](docs/ESTADO.md) tem a fase atual, a tarefa seguinte, as tarefas feitas com os commits, as decisões e os pontos adiados. Cada agente atualiza-o no fim de cada tarefa, no mesmo commit.
+- Os planos de cada fase estão em [`docs/superpowers/plans/`](docs/superpowers/plans/) e as tarefas fazem-se pela ordem do plano.
+- Só um agente escreve num branch de cada vez. Antes de trocares de agente, confirma que o trabalho está num commit (um `wip(…)` serve) e que o `docs/ESTADO.md` diz o que falta.
 
 ## Projeto remoto e deploy
 

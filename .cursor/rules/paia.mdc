@@ -1,0 +1,17 @@
+---
+description: Regras do projeto PAIÁ para todos os agentes
+alwaysApply: true
+---
+
+As regras deste projeto estão em `AGENTS.md`, na raiz. Lê-o antes de qualquer alteração e segue-o.
+
+O ponto de situação está em `docs/ESTADO.md`: a fase atual, a tarefa seguinte e as decisões tomadas. Começa por aí, e atualiza-o no fim de cada tarefa, no mesmo commit da tarefa.
+
+Em resumo:
+- só recursos gratuitos;
+- verificação local com `npm run verify`;
+- nada no Supabase remoto nem na Vercel sem autorização;
+- sem segredos;
+- PT-AO com «tu»;
+- testes primeiro;
+- um só agente a escrever num branch de cada vez.
