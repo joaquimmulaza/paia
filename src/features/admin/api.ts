@@ -17,7 +17,8 @@ type Rpc = (fn: string, ...args: [object?]) => PromiseLike<Reply>;
 // Chamado como método, para o `rpc` do cliente manter o `this`.
 const rpc: Rpc = (fn, ...args) => (supabase as unknown as { rpc: Rpc }).rpc(fn, ...args);
 
-async function call(
+/** Chama uma função da base. A falha de rede dá MESSAGES.generic; um código, `translate(código)`. */
+export async function call(
   fn: string,
   args?: object,
   translate: (code: string) => string = translateDbError,

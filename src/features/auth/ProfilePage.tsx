@@ -135,7 +135,7 @@ function ProfileDetails({ profile }: { profile: MyProfile }) {
           className="overflow-hidden rounded-lg border-2 border-ink bg-surface shadow-hard-sm"
         >
           <Link
-            to="/admin/destaques"
+            to="/admin"
             className={cn(
               'flex min-h-14 items-center gap-3 px-4 font-display font-bold text-ink no-underline hover:bg-brand-tint',
               focusRing,

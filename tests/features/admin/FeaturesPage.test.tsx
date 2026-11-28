@@ -14,6 +14,11 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/features/admin/api', () => api);
 
+// A barra lateral mostra o contador de candidaturas por analisar.
+vi.mock('@/features/admin/applications-api', () => ({
+  countPendingApplications: vi.fn(async () => 0),
+}));
+
 const catalog = vi.hoisted(() => ({
   listCategories: vi.fn(async () => []),
   searchProducts: vi.fn(async () => ({ items: [], next: null })),

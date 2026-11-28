@@ -33,6 +33,8 @@ export const MESSAGES = {
   alreadyDecided:
     'Esta candidatura já foi decidida por outra pessoa da equipa. Atualizámos o estado.',
   messageRequired: 'Para recusar, diz à candidata o que deve corrigir.',
+  /** A01b: a decisão falhou por um motivo que não é de negócio (ligação, servidor). */
+  decisionFailed: 'Não foi possível guardar a decisão. Tenta outra vez.',
   storeNameRequired: 'Escreve o nome da loja.',
   storeDescriptionRequired: 'Diz em poucas palavras o que vendes.',
   storeCategoryRequired: 'Escolhe a categoria principal.',

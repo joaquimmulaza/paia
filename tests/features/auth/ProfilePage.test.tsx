@@ -145,11 +145,11 @@ describe('ProfilePage (K03)', () => {
     expect(card.querySelector('a')).toBeNull();
   });
 
-  it('um administrador vê a ligação «Administração» para /admin/destaques', async () => {
+  it('um administrador vê a ligação «Administração» para /admin', async () => {
     api.getMyProfile.mockResolvedValue({ ...student, isAdmin: true });
     mount();
     const link = await screen.findByRole('link', { name: 'Administração' });
-    expect(link).toHaveAttribute('href', '/admin/destaques');
+    expect(link).toHaveAttribute('href', '/admin');
     // Linha de lista (k-list), não um botão: dentro de <nav aria-label="Administração">.
     expect(screen.getByRole('navigation', { name: 'Administração' })).toContainElement(link);
     expect(link).toHaveClass('min-h-14');

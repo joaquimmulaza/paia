@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom';
+import { ApplicationsPage } from '@/features/admin/ApplicationsPage';
 import { FeaturesPage } from '@/features/admin/FeaturesPage';
 import { RequireAdmin } from '@/features/admin/RequireAdmin';
 import { ProfilePage } from '@/features/auth/ProfilePage';
@@ -126,7 +127,17 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
   },
-  { path: '/admin', element: <Navigate to="/admin/destaques" replace /> },
+  { path: '/admin', element: <Navigate to="/admin/candidaturas" replace /> },
+  {
+    path: '/admin/candidaturas',
+    element: (
+      <RequireAuth>
+        <RequireAdmin>
+          <ApplicationsPage />
+        </RequireAdmin>
+      </RequireAuth>
+    ),
+  },
   {
     path: '/admin/destaques',
     element: (

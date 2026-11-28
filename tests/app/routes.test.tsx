@@ -40,6 +40,15 @@ const admin = vi.hoisted(() => ({
 }));
 vi.mock('@/features/admin/api', () => admin);
 
+const applications = vi.hoisted(() => ({
+  listApplications: vi.fn(async () => []),
+  getApplication: vi.fn(async () => null),
+  listStoreDecisions: vi.fn(async () => []),
+  countPendingApplications: vi.fn(async () => 0),
+  decideStore: vi.fn(),
+}));
+vi.mock('@/features/admin/applications-api', () => applications);
+
 const seller = vi.hoisted(() => ({
   getMyStore: vi.fn(async () => null),
   getMyStoreDecisions: vi.fn(async () => []),
@@ -115,12 +124,27 @@ describe('rotas da aplicação', () => {
     expect(document.title).toBe(title);
   });
 
-  it('/admin redireciona para /admin/destaques (com sessão de administrador)', async () => {
+  it('/admin redireciona para /admin/candidaturas (com sessão de administrador)', async () => {
     auth.state = { session: { user: { id: 'u1' } }, loading: false };
     api.getMyProfile.mockResolvedValue({ ...student, isAdmin: true });
     const { router } = renderRoutes(routes, '/admin');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Candidaturas de lojas' }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/admin/candidaturas');
+  });
+
+  it('/admin/destaques continua a abrir os destaques', async () => {
+    auth.state = { session: { user: { id: 'u1' } }, loading: false };
+    api.getMyProfile.mockResolvedValue({ ...student, isAdmin: true });
+    renderRoutes(routes, '/admin/destaques');
     expect(await screen.findByRole('heading', { level: 1, name: 'Destaques' })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/admin/destaques');
+  });
+
+  it('/admin/candidaturas sem sessão vai para /entrar com voltar', async () => {
+    const { router } = renderRoutes(routes, '/admin/candidaturas');
+    expect(await screen.findByRole('heading', { name: 'Entra no PAIÁ' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?voltar=%2Fadmin%2Fcandidaturas');
   });
 
   it('/admin/destaques sem sessão vai para /entrar com voltar', async () => {
