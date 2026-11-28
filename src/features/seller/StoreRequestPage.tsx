@@ -388,6 +388,7 @@ function StoreForm({ initial, saved }: { initial: MyStore | null; saved: MyStore
       />
       <ImagePicker
         label="Imagem de capa"
+        feminine
         value={values.coverPath}
         onPick={pickFor('cover')}
         onRemove={() => set('coverPath', null)}

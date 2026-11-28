@@ -30,6 +30,8 @@ type ImagePickerProps = {
   hint?: string;
   /** Nome curto do cartão depois de escolhida (por omissão, o rótulo). */
   shortLabel?: string;
+  /** O nome é feminino («Imagem de capa»): «escolhida», «enviada». */
+  feminine?: boolean;
   /** Erro vindo do formulário (por exemplo, o logótipo em falta ao enviar). */
   error?: string;
   bucket?: 'store-media' | 'product-media';
@@ -44,6 +46,12 @@ function sizeInMb(bytes: number): number {
   return Math.round((bytes / (1024 * 1024)) * 10) / 10;
 }
 
+// O anel de foco do input escondido aparece no cartão visível logo a seguir (peer).
+const peerRing =
+  'peer-focus-visible:outline-solid peer-focus-visible:outline-[length:var(--focus-ring-width)] peer-focus-visible:outline-offset-[var(--focus-ring-offset)] peer-focus-visible:outline-[color:var(--focus-ring)]';
+
+const UPLOADING = 'A enviar a imagem…';
+
 export function ImagePicker({
   label,
   value,
@@ -53,12 +61,18 @@ export function ImagePicker({
   optional,
   hint,
   shortLabel,
+  feminine = false,
   error,
   bucket = 'store-media',
 }: ImagePickerProps) {
-  const ids = { label: useId(), hint: useId(), error: useId() };
+  const ids = { label: useId(), hint: useId(), error: useId(), input: useId() };
   const inputRef = useRef<HTMLInputElement>(null);
+  const changeRef = useRef<HTMLButtonElement>(null);
   const [state, setState] = useState<State>({ status: 'idle' });
+  // O que o leitor de ecrã ouve: uma região aria-live sempre montada.
+  const [announcement, setAnnouncement] = useState('');
+  // Depois de um envio bem-sucedido, o foco passa para «Trocar» quando ele aparecer.
+  const focusChange = useRef(false);
   // Pré-visualização local enquanto a imagem pública ainda não foi pedida.
   const [preview, setPreview] = useState<string | null>(null);
   useEffect(() => {
@@ -67,24 +81,45 @@ export function ImagePicker({
     };
   }, [preview]);
 
+  const name = shortLabel ?? label;
+  const failed = state.status === 'failed';
+  const uploading = state.status === 'uploading';
+  const shownError = failed ? state.message : error;
+  const src = value ? (preview ?? publicImageUrl(bucket, value)) : null;
+  const done = !uploading && !failed && src !== null;
+
+  useEffect(() => {
+    if (done && focusChange.current) {
+      focusChange.current = false;
+      changeRef.current?.focus();
+    }
+  });
+
+  function fail(message: string, retry: Blob | null) {
+    setAnnouncement('');
+    setState({ status: 'failed', message, retry });
+    // O cartão com «Trocar» pode ter saído: o foco volta ao campo, não cai no <body>.
+    inputRef.current?.focus();
+  }
+
   async function send(blob: Blob) {
     setState({ status: 'uploading' });
+    setAnnouncement(UPLOADING);
     try {
       await onPick(blob);
       // O jsdom (e navegadores muito antigos) não têm createObjectURL: fica a imagem pública.
       if (typeof URL.createObjectURL === 'function') setPreview(URL.createObjectURL(blob));
+      focusChange.current = true;
+      setAnnouncement(`${name} ${feminine ? 'enviada' : 'enviado'}.`);
       setState({ status: 'idle' });
     } catch (e) {
       if (e instanceof PickCancelled) {
+        setAnnouncement('');
         setState({ status: 'idle' });
         return;
       }
       const message = e instanceof Error && e.message ? e.message : MESSAGES.uploadFailed;
-      setState({
-        status: 'failed',
-        message: message === MESSAGES.generic ? MESSAGES.uploadFailed : message,
-        retry: blob,
-      });
+      fail(message === MESSAGES.generic ? MESSAGES.uploadFailed : message, blob);
     }
   }
 
@@ -92,49 +127,20 @@ export function ImagePicker({
     const file = event.target.files?.[0];
     // O mesmo ficheiro pode voltar a ser escolhido depois de um erro.
     event.target.value = '';
-    if (!file) return;
+    if (!file || uploading) return;
     const problem = checkImageFile(file);
-    if (problem === 'format') {
-      setState({ status: 'failed', message: MESSAGES.imageFormat, retry: null });
-      return;
-    }
-    if (problem === 'too_large') {
-      setState({
-        status: 'failed',
-        message: MESSAGES.imageTooLarge(sizeInMb(file.size)),
-        retry: null,
-      });
-      return;
-    }
+    if (problem === 'format') return fail(MESSAGES.imageFormat, null);
+    if (problem === 'too_large') return fail(MESSAGES.imageTooLarge(sizeInMb(file.size)), null);
     setState({ status: 'uploading' });
+    setAnnouncement(UPLOADING);
     let blob: Blob;
     try {
       blob = await compressImage(file);
     } catch {
-      setState({ status: 'failed', message: MESSAGES.invalidPath, retry: null });
-      return;
+      return fail(MESSAGES.invalidPath, null);
     }
     await send(blob);
   }
-
-  const failed = state.status === 'failed';
-  const shownError = failed ? state.message : error;
-  const src = value ? (preview ?? publicImageUrl(bucket, value)) : null;
-
-  const input = (
-    <input
-      ref={inputRef}
-      type="file"
-      accept="image/jpeg,image/png,image/webp"
-      className="sr-only"
-      aria-labelledby={ids.label}
-      aria-describedby={cn(hint && !failed && ids.hint, shownError && ids.error) || undefined}
-      aria-invalid={shownError ? true : undefined}
-      aria-required={required || undefined}
-      disabled={state.status === 'uploading'}
-      onChange={(e) => void handleChange(e)}
-    />
-  );
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -148,10 +154,32 @@ export function ImagePicker({
         )}
       </span>
 
-      {state.status === 'uploading' && (
+      {/* Um só input, sempre montado: o foco não se perde ao mudar de estado. Durante o envio
+          fica ativo (desativado perderia o foco) e ignora novas escolhas. Com a imagem
+          escolhida sai da ordem do Tab: o controlo passa a ser «Trocar». */}
+      <input
+        ref={inputRef}
+        id={ids.input}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="peer sr-only"
+        tabIndex={done ? -1 : undefined}
+        aria-labelledby={ids.label}
+        aria-describedby={
+          cn(hint && !failed && !done && ids.hint, shownError && ids.error) || undefined
+        }
+        aria-invalid={shownError ? true : undefined}
+        aria-required={required || undefined}
+        aria-disabled={uploading || undefined}
+        onChange={(e) => void handleChange(e)}
+      />
+
+      {uploading && (
         <div
-          role="status"
-          className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 rounded-md border-2 border-ink bg-surface p-2.5"
+          className={cn(
+            'grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 rounded-md border-2 border-ink bg-surface p-2.5',
+            peerRing,
+          )}
         >
           <span
             aria-hidden="true"
@@ -159,33 +187,31 @@ export function ImagePicker({
           >
             <ImageIcon className="size-6" />
           </span>
-          <div className="flex flex-col gap-1.5">
-            <p className="m-0 font-body text-body font-bold">A enviar a imagem…</p>
-            <div
-              aria-hidden="true"
-              className="h-2 overflow-hidden rounded-full border border-ink bg-surface"
-            >
+          {/* O texto visível repete a região aria-live: escondido do leitor de ecrã. */}
+          <div aria-hidden="true" className="flex flex-col gap-1.5">
+            <p className="m-0 font-body text-body font-bold">{UPLOADING}</p>
+            <div className="h-2 overflow-hidden rounded-full border border-ink bg-surface">
               <span className="block h-full w-3/5 bg-brand" />
             </div>
             <p className="m-0 font-body text-small font-medium text-ink-muted">
               Reduzimos a foto antes de enviar, para poupar dados.
             </p>
           </div>
-          {input}
         </div>
       )}
 
-      {state.status !== 'uploading' && src && !failed && (
+      {done && (
         <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 rounded-md border-2 border-ink bg-surface p-2.5">
           <img
             src={src}
-            alt={`${shortLabel ?? label} escolhido`}
+            alt={`${name} ${feminine ? 'escolhida' : 'escolhido'}`}
             className="block size-18 rounded-md border-2 border-ink object-cover"
           />
           <div className="flex flex-col items-start gap-1">
-            <p className="m-0 font-body text-body font-bold">{shortLabel ?? label}</p>
+            <p className="m-0 font-body text-body font-bold">{name}</p>
             <div className="flex flex-wrap items-center gap-3.5">
               <Button
+                ref={changeRef}
                 variant="link"
                 size="sm"
                 aria-describedby={ids.label}
@@ -201,7 +227,10 @@ export function ImagePicker({
                   aria-describedby={ids.label}
                   onClick={() => {
                     setPreview(null);
+                    setAnnouncement('');
                     onRemove();
+                    // O cartão sai: o foco volta ao campo de escolher (já no Tab outra vez).
+                    requestAnimationFrame(() => inputRef.current?.focus());
                   }}
                 >
                   Remover
@@ -209,21 +238,20 @@ export function ImagePicker({
               )}
             </div>
           </div>
-          {input}
         </div>
       )}
 
-      {state.status !== 'uploading' && (!src || failed) && (
+      {!uploading && !done && (
         <label
+          htmlFor={ids.input}
           className={cn(
             'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border-2 border-ink p-4 text-center text-ink',
             'touch-manipulation [-webkit-tap-highlight-color:transparent]',
-            'has-focus-visible:outline-solid has-focus-visible:outline-[length:var(--focus-ring-width)] has-focus-visible:outline-offset-[var(--focus-ring-offset)] has-focus-visible:outline-[color:var(--focus-ring)]',
+            peerRing,
             shownError ? 'min-h-24 bg-danger-tint' : 'min-h-[120px] bg-brand-tint',
             !hint && !shownError && 'min-h-[88px]',
           )}
         >
-          {input}
           {!failed && <Upload aria-hidden="true" className="size-6" />}
           <strong className="font-display font-bold">
             {failed ? 'Escolher outra imagem' : 'Escolher imagem'}
@@ -242,9 +270,11 @@ export function ImagePicker({
         </label>
       )}
 
-      {shownError && state.status !== 'uploading' && (
+      {shownError && !uploading && (
         <p
           id={ids.error}
+          // Uma falha desta imagem anuncia-se logo; o erro do formulário já tem o resumo.
+          role={failed ? 'alert' : undefined}
           className="m-0 flex items-start gap-1.5 font-body text-caption font-medium text-danger"
         >
           <CircleAlert aria-hidden="true" className="size-[18px] shrink-0" />
@@ -262,6 +292,10 @@ export function ImagePicker({
           Tentar outra vez
         </Button>
       )}
+
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
     </div>
   );
 }
