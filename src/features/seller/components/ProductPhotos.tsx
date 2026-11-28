@@ -302,6 +302,7 @@ export function ProductPhotos({ photos }: { photos: ProductPhotosState }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const tileRefs = useRef(new Map<string, HTMLButtonElement>());
   const moveRef = useRef<HTMLButtonElement>(null);
+  const gridRef = useRef<HTMLUListElement>(null);
   // Para onde vai o foco depois de uma ação que tira de cena o controlo premido.
   const focusNext = useRef<string | null>(null);
   // Só serve para voltar a desenhar depois de pedir o foco (o efeito corre a seguir).
@@ -323,7 +324,8 @@ export function ProductPhotos({ photos }: { photos: ProductPhotosState }) {
     const fallback = inputRef.current ?? tileRefs.current.get(lastKey);
     if (target === 'last') {
       if (!inputRef.current) tileRefs.current.get(lastKey)?.focus();
-    } else if (target === 'input') fallback?.focus();
+    } else if (target === 'grid') gridRef.current?.focus();
+    else if (target === 'input') fallback?.focus();
     else if (target === 'move') {
       (moveRef.current ?? tileRefs.current.get(selectedKey ?? ''))?.focus();
     } else (tileRefs.current.get(target) ?? fallback)?.focus();
@@ -346,10 +348,13 @@ export function ProductPhotos({ photos }: { photos: ProductPhotosState }) {
   }
 
   async function handlePick(files: File[]) {
-    const before = slots.length;
+    const fills = slots.length + files.length >= MAX_PHOTOS;
+    // Os lugares «A enviar…» entram já e, cheia a grelha, «Juntar foto» (que tem o foco) sai
+    // logo: o foco passa para a grelha, que fica, e não para o <body>.
+    if (fills) requestFocus('grid');
     await photos.pick(files);
-    // Cheia, a área de juntar sai: o foco passa para a última foto.
-    if (before + files.length >= MAX_PHOTOS) requestFocus(`last`);
+    // No fim, para a última foto (se já for um botão; senão, fica na grelha).
+    if (fills) requestFocus('last');
   }
 
   const hint =
@@ -362,7 +367,13 @@ export function ProductPhotos({ photos }: { photos: ProductPhotosState }) {
       <span id={ids.label} className="font-display text-label font-bold text-ink uppercase">
         Fotos
       </span>
-      <ul aria-labelledby={ids.label} className="m-0 grid list-none grid-cols-3 gap-2.5 p-0">
+      {/* Focável só por código: recebe o foco quando «Juntar foto» sai de cena. */}
+      <ul
+        ref={gridRef}
+        tabIndex={-1}
+        aria-labelledby={ids.label}
+        className={cn('m-0 grid list-none grid-cols-3 gap-2.5 rounded-md p-0', focusRing)}
+      >
         {slots.map((slot, i) => {
           const name = `Foto ${i + 1}${i === 0 ? ', principal' : ''}`;
           const src =

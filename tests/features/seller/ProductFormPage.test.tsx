@@ -368,6 +368,18 @@ describe('ProductFormPage, editar produto (V06b)', () => {
     expect(sellerApi.updateProduct).not.toHaveBeenCalled();
   });
 
+  it('uma escolha que enche a grelha não deixa o foco cair no <body>', async () => {
+    const user = userEvent.setup({ delay: null });
+    sellerApi.uploadProductImage.mockReturnValue(new Promise(() => {}));
+    mount('/vender/produtos/p1');
+    const input = await screen.findByLabelText('Juntar foto');
+    input.focus();
+    await user.upload(input, [png('3.png'), png('4.png'), png('5.png')]);
+    await waitFor(() => expect(screen.queryByLabelText('Juntar foto')).toBeNull());
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole('list', { name: 'Fotos' })).toHaveFocus();
+  });
+
   it('confirmar a remoção chama deleteProduct com os caminhos das fotos', async () => {
     const user = userEvent.setup({ delay: null });
     const { router } = mount('/vender/produtos/p1');
