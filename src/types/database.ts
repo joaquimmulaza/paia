@@ -279,6 +279,9 @@ isOneToOne: true
 "admin_set_store_feature_active":
 { Args: { "p_active": boolean,"p_id": string }; Returns: undefined
                            },
+"can_delete_media":
+{ Args: { "p_bucket": string,"p_name": string }; Returns: boolean
+                           },
 "can_write_media":
 { Args: { "p_bucket": string,"p_name": string }; Returns: boolean
                            },

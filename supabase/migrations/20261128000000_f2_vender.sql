@@ -772,6 +772,16 @@ grant delete on public.product_images to authenticated;
 --      seed e os testes do F1 têm produtos publicados sem fotos e caminhos
 --      antigos, e a administração (F4) precisa de corrigir dados. As cascatas
 --      das FKs correm como dono da tabela (postgres) e passam também.
+--    * ATENÇÃO, isenção por current_user: os triggers desta secção saltam
+--      PHOTO_REQUIRED, INVALID_PATH e CATEGORY_NOT_FOUND sempre que
+--      current_user é postgres, supabase_admin ou service_role. Dentro de uma
+--      função SECURITY DEFINER, current_user é o dono da função (em geral
+--      postgres). Por isso, qualquer função SECURITY DEFINER futura que
+--      escreva em products ou product_images, chamada pelo cliente, passa
+--      por cima destas regras sem aviso: essa função tem de as verificar
+--      ela própria (foto antes de publicar, caminho
+--      products/<loja>/<produto>/<uuid>.webp, categoria visível) antes de
+--      escrever. set_product_image_order só muda position e não é afetada.
 --    * Os triggers são SECURITY INVOKER (current_user é o papel de quem
 --      escreve) e não chamam nada em private (authenticated não tem USAGE).
 --      Como authenticated, leem pelas RLS do dono, que vê tudo o que é da sua
@@ -959,10 +969,21 @@ grant execute on function public.set_product_image_order(uuid, uuid[]) to authen
 --        suspended, como save_my_store);
 --      - product-media: products/<loja>/<produto>/<uuid>.webp, com a loja do
 --        chamador approved e o produto dessa loja.
---    * Políticas para authenticated: INSERT e DELETE, e SELECT com a mesma
---      regra, porque um DELETE com WHERE (e o da Storage API, com RETURNING)
---      só vê as linhas que uma política de SELECT deixa ver. A leitura
---      pública dos ficheiros vem dos buckets públicos, não desta política.
+--    * can_delete_media decide o DELETE (e o SELECT que o acompanha): o
+--      mesmo caminho estrito, com a loja do caminho do chamador em draft,
+--      rejected ou approved (como store-media), mas em product-media sem
+--      exigir que o produto ainda exista. Apagar um produto apaga as fotos
+--      (regra 11): o cliente apaga primeiro a linha do produto (as linhas
+--      das fotos vão em cascata) e depois os ficheiros; com a regra de
+--      escrita, o produto já não existia e o DELETE no Storage tocava 0
+--      objetos, sem erro. Em pending_approval e suspended não se apaga,
+--      como não se escreve. É um superconjunto de can_write_media.
+--    * Políticas para authenticated: INSERT com can_write_media; DELETE e
+--      SELECT com can_delete_media, porque um DELETE com WHERE (e o da
+--      Storage API, com RETURNING) só vê as linhas que uma política de
+--      SELECT deixa ver. O SELECT só mostra ficheiros da loja do próprio
+--      chamador. A leitura pública dos ficheiros vem dos buckets públicos,
+--      não desta política.
 --    * Sem UPDATE: o cliente envia com upsert false e um nome novo de cada
 --      vez. Apagar ficheiros pela administração fica para F4.
 -- ---------------------------------------------------------------------------
@@ -1010,17 +1031,52 @@ $$;
 revoke execute on function public.can_write_media(text, text) from public, anon, authenticated;
 grant execute on function public.can_write_media(text, text) to authenticated;
 
+create function public.can_delete_media(p_bucket text, p_name text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_uuid constant text := '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  v_parts text[];
+begin
+  if v_uid is null or p_bucket is null or p_name is null then
+    return false;
+  end if;
+
+  if p_bucket = 'store-media' then
+    v_parts := regexp_match(p_name, '^stores/(' || v_uuid || ')/(?:logo|cover)-' || v_uuid || '\.webp$');
+  elsif p_bucket = 'product-media' then
+    v_parts := regexp_match(p_name, '^products/(' || v_uuid || ')/' || v_uuid || '/' || v_uuid || '\.webp$');
+  else
+    return false;
+  end if;
+  if v_parts is null then
+    return false;
+  end if;
+
+  return exists (
+    select 1 from public.stores s
+     where s.id = v_parts[1]::uuid and s.owner_id = v_uid and s.status in ('draft', 'rejected', 'approved'));
+end;
+$$;
+revoke execute on function public.can_delete_media(text, text) from public, anon, authenticated;
+grant execute on function public.can_delete_media(text, text) to authenticated;
+
 create policy media_insert_owner on storage.objects
   for insert to authenticated
   with check (bucket_id in ('store-media', 'product-media') and public.can_write_media(bucket_id, name));
 
 create policy media_select_owner on storage.objects
   for select to authenticated
-  using (bucket_id in ('store-media', 'product-media') and public.can_write_media(bucket_id, name));
+  using (bucket_id in ('store-media', 'product-media') and public.can_delete_media(bucket_id, name));
 
 create policy media_delete_owner on storage.objects
   for delete to authenticated
-  using (bucket_id in ('store-media', 'product-media') and public.can_write_media(bucket_id, name));
+  using (bucket_id in ('store-media', 'product-media') and public.can_delete_media(bucket_id, name));
 
 -- ---------------------------------------------------------------------------
 -- 8. O catálogo público continua só com produtos à venda.

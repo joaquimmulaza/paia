@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(209);
+select plan(225);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -975,6 +975,20 @@ select is(pg_temp.rows_of(format($$ update public.products set name = 'Outro' wh
   '(j) o dono de uma loja suspensa não altera os produtos');
 reset role;
 
+-- Nem apaga um produto nem uma foto (a foto é posta como postgres).
+insert into t_prod select 'gelado', id from public.products where name = 'Gelado';
+insert into public.product_images (product_id, path, position)
+values (pg_temp.pid('gelado'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000005'), pg_temp.pid('gelado')), 0);
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000005');
+select is(pg_temp.rows_of(format($$ delete from public.product_images where product_id = %L $$, pg_temp.pid('gelado'))), 0,
+  '(j) o dono de uma loja suspensa não apaga uma foto');
+select is(pg_temp.rows_of(format($$ delete from public.products where id = %L $$, pg_temp.pid('gelado'))), 0,
+  '(j) o dono de uma loja suspensa não apaga um produto');
+reset role;
+select is((select count(*)::int from public.product_images where product_id = pg_temp.pid('gelado')), 1,
+  '(j) o produto e a foto da loja suspensa ficaram');
+
 -- ===========================================================================
 -- (k) Ordem das fotos
 -- ===========================================================================
@@ -1014,6 +1028,18 @@ select throws_ok(
   $$ select public.set_product_image_order(pg_temp.pid('bolo'),
        array[(select id from t_img where position = 0), (select id from t_img where position = 1)]) $$,
   'P0001', 'NOT_ALLOWED', '(k) outro utilizador não ordena as fotos');
+-- UPDATE direto de position (product_images_update_owner): outro utilizador
+-- não toca; o dono de uma loja approved move uma foto para uma posição livre (4)
+-- e volta a pô-la onde estava.
+select is(pg_temp.rows_of(format($$ update public.product_images set position = 4 where product_id = %L $$, pg_temp.pid('bolo'))), 0,
+  '(k) outro utilizador não muda position por UPDATE direto');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select is(pg_temp.rows_of($$ update public.product_images set position = 4 where id = (select id from t_img where position = 0) $$), 1,
+  '(k) o dono de uma loja approved muda position por UPDATE direto');
+select is((select position::int from public.product_images where id = (select id from t_img where position = 0)), 4,
+  '(k) a foto ficou na posição 4');
+select is(pg_temp.rows_of($$ update public.product_images set position = 1 where id = (select id from t_img where position = 0) $$), 1,
+  '(k) o dono repõe a posição');
 reset role;
 select ok(
   (select condeferrable and not condeferred from pg_constraint
@@ -1125,6 +1151,39 @@ select is(pg_temp.rows_of($$ delete from storage.objects where bucket_id = 'stor
 select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
 select is(pg_temp.rows_of($$ delete from storage.objects where bucket_id = 'store-media' and name = (select name from t_obj where k = 'logo1') $$),
   1, '(l) o dono apaga o logótipo da sua loja');
+
+-- Regra 11: apagar um produto apaga as fotos (linhas e ficheiros). O cliente
+-- apaga a linha do produto primeiro e os ficheiros a seguir, por isso o
+-- DELETE em storage.objects não pode depender de o produto ainda existir.
+with ins as (
+  insert into public.products (store_id, category_id, name, price_kz, stock)
+  values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('doces'), 'Com ficheiros', 100, 1)
+  returning id)
+insert into t_prod select 'ficheiros', id from ins;
+insert into t_obj values
+  ('foto1', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('ficheiros'))),
+  ('foto2', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('ficheiros')));
+insert into storage.objects (bucket_id, name) select 'product-media', name from t_obj where k in ('foto1', 'foto2');
+select is(pg_temp.rows_of(format($$ delete from public.products where id = %L $$, pg_temp.pid('ficheiros'))), 1,
+  '(l) o dono apaga o produto com ficheiros');
+select ok(public.can_delete_media('product-media', (select name from t_obj where k = 'foto1')),
+  '(l) can_delete_media: a foto de um produto já apagado da própria loja é true');
+select ok(not public.can_write_media('product-media', (select name from t_obj where k = 'foto1')),
+  '(l) can_write_media: a mesma foto já não se escreve');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000002');
+select is(pg_temp.rows_of($$ delete from storage.objects where bucket_id = 'product-media' and name = (select name from t_obj where k = 'foto1') $$),
+  0, '(l) outro utilizador não apaga o ficheiro do produto apagado');
+select ok(not public.can_delete_media('product-media', (select name from t_obj where k = 'foto1')),
+  '(l) can_delete_media: a foto de outra loja é false');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select is(pg_temp.rows_of($$ delete from storage.objects where bucket_id = 'product-media' and name = (select name from t_obj where k = 'foto1') $$),
+  1, '(l) depois de apagar o produto, o dono apaga o ficheiro dele');
+with d as (delete from storage.objects where bucket_id = 'product-media' and name = (select name from t_obj where k = 'foto2') returning 1)
+select is((select count(*)::int from d), 1, '(l) o DELETE com RETURNING (o da Storage API) também apaga o ficheiro');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000005');
+select ok(not public.can_delete_media('product-media',
+    pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000005'), pg_temp.pid('gelado'))),
+  '(l) can_delete_media com a loja suspended é false');
 reset role;
 
 select results_eq(
@@ -1136,6 +1195,7 @@ select results_eq(
 
 set local role anon;
 select throws_ok($$ select public.can_write_media('store-media', 'x') $$, '42501', null, '(l) anon não chama can_write_media');
+select throws_ok($$ select public.can_delete_media('store-media', 'x') $$, '42501', null, '(l) anon não chama can_delete_media');
 reset role;
 
 -- ===========================================================================
