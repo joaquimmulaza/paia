@@ -9,7 +9,11 @@ import { HomePage } from '@/features/catalog/HomePage';
 import { ProductPage } from '@/features/catalog/ProductPage';
 import { StorePage } from '@/features/catalog/StorePage';
 import { StoresPage } from '@/features/catalog/StoresPage';
+import { ProductFormPage } from '@/features/seller/ProductFormPage';
+import { ProductsPage } from '@/features/seller/ProductsPage';
 import { SellPage } from '@/features/seller/SellPage';
+import { StoreDashboardPage } from '@/features/seller/StoreDashboardPage';
+import { StoreEditPage } from '@/features/seller/StoreEditPage';
 import { StoreRequestPage } from '@/features/seller/StoreRequestPage';
 import { StoreRequestViewPage } from '@/features/seller/StoreRequestViewPage';
 import { StoreStatusPage } from '@/features/seller/StoreStatusPage';
@@ -49,7 +53,7 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
   },
-  // Candidatura da loja (V01–V03b). O painel da loja aprovada (/vender/loja) chega na Task 6.
+  // Candidatura da loja (V01–V03b), painel da loja aprovada (V04b, V02c) e produtos (V05–V06b).
   {
     path: '/vender',
     element: (
@@ -79,6 +83,46 @@ export const routes: RouteObject[] = [
     element: (
       <RequireAuth>
         <StoreRequestViewPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/loja',
+    element: (
+      <RequireAuth>
+        <StoreDashboardPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/loja/editar',
+    element: (
+      <RequireAuth>
+        <StoreEditPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/produtos',
+    element: (
+      <RequireAuth>
+        <ProductsPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/produtos/novo',
+    element: (
+      <RequireAuth>
+        <ProductFormPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/produtos/:id',
+    element: (
+      <RequireAuth>
+        <ProductFormPage />
       </RequireAuth>
     ),
   },

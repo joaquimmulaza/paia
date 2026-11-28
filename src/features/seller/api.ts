@@ -22,6 +22,7 @@ export const PAGE_SIZE = 20;
 
 interface Reply {
   data: unknown;
+  count?: number | null;
   error: { message: string; code?: string } | null;
 }
 
@@ -30,8 +31,8 @@ function errorCode(error: { message: string; code?: string }): string {
   return error.code === '22P02' ? 'NOT_FOUND' : error.message;
 }
 
-/** Executa o pedido; erro da base ou da rede vira `Error` com texto PT-AO. Devolve `data`. */
-async function exec(request: () => PromiseLike<Reply>): Promise<unknown> {
+/** Executa o pedido; erro da base ou da rede vira `Error` com texto PT-AO. Devolve a resposta. */
+async function send(request: () => PromiseLike<Reply>): Promise<Reply> {
   let result: Reply;
   try {
     result = await request();
@@ -39,7 +40,12 @@ async function exec(request: () => PromiseLike<Reply>): Promise<unknown> {
     throw new Error(MESSAGES.generic);
   }
   if (result.error) throw new Error(translateDbError(errorCode(result.error)));
-  return result.data;
+  return result;
+}
+
+/** Como `send`, mas devolve só `data`. */
+async function exec(request: () => PromiseLike<Reply>): Promise<unknown> {
+  return (await send(request)).data;
 }
 
 function rows<T>(data: unknown): T[] {
@@ -176,7 +182,7 @@ export async function uploadStoreImage(
 // --- Produtos ---------------------------------------------------------------------------
 
 const LIST_COLUMNS =
-  'id,name,price_kz,stock,is_published,moderation_status,category_id,created_at,product_images(path,position)';
+  'id,name,price_kz,stock,is_published,moderation_status,moderation_reason,category_id,created_at,product_images(path,position)';
 const DETAIL_COLUMNS =
   'id,name,description,price_kz,stock,is_published,moderation_status,moderation_reason,category_id,created_at,product_images(id,path,position)';
 
@@ -206,22 +212,37 @@ function toProduct(r: ProductRow): MyProduct {
     stock: r.stock,
     isPublished: r.is_published,
     moderationStatus: r.moderation_status,
+    moderationReason: r.moderation_reason ?? null,
     categoryId: r.category_id,
     createdAt: r.created_at,
     mainImagePath: sortedImages(r)[0]?.path ?? null,
   };
 }
 
-/** Lê `products` direto: a RLS do dono mostra também os produtos escondidos. */
+interface Filterable<Q> {
+  eq(column: string, value: unknown): Q;
+}
+
+/**
+ * A loja e o separador. O `store_id` é obrigatório: a RLS pública também mostra os produtos
+ * publicados das outras lojas; a do dono só lhe junta os seus escondidos.
+ */
+function byFilter<Q extends Filterable<Q>>(q: Q, storeId: string, filter: ProductFilter): Q {
+  let out = q.eq('store_id', storeId);
+  if (filter === 'published') out = out.eq('is_published', true);
+  if (filter === 'sold_out') out = out.eq('is_published', true).eq('stock', 0);
+  if (filter === 'hidden') out = out.eq('is_published', false);
+  return out;
+}
+
+/** Lê `products` direto, só da loja do dono (com os escondidos, pela RLS do dono). */
 export async function listMyProducts(
+  storeId: string,
   filter: ProductFilter,
   cursor?: Cursor,
 ): Promise<Page<MyProduct>> {
   const data = await exec(() => {
-    let q = supabase.from('products').select(LIST_COLUMNS);
-    if (filter === 'published') q = q.eq('is_published', true);
-    if (filter === 'sold_out') q = q.eq('is_published', true).eq('stock', 0);
-    if (filter === 'hidden') q = q.eq('is_published', false);
+    let q = byFilter(supabase.from('products').select(LIST_COLUMNS), storeId, filter);
     if (cursor) {
       // O texto bruto do created_at: passar por Date truncaria os microssegundos.
       q = q.or(
@@ -242,11 +263,29 @@ export async function listMyProducts(
   };
 }
 
-export async function getMyProduct(id: string): Promise<MyProductDetail | null> {
+/** Quantos produtos há no separador (só o cabeçalho, sem linhas). */
+export async function countMyProducts(storeId: string, filter: ProductFilter): Promise<number> {
+  const reply = await send(() =>
+    byFilter(
+      supabase.from('products').select('id', { count: 'exact', head: true }),
+      storeId,
+      filter,
+    ),
+  );
+  return reply.count ?? 0;
+}
+
+/** Só da loja do dono: um produto publicado de outra loja também passaria pela RLS pública. */
+export async function getMyProduct(storeId: string, id: string): Promise<MyProductDetail | null> {
   let data: unknown;
   try {
     data = await exec(() =>
-      supabase.from('products').select(DETAIL_COLUMNS).eq('id', id).maybeSingle(),
+      supabase
+        .from('products')
+        .select(DETAIL_COLUMNS)
+        .eq('id', id)
+        .eq('store_id', storeId)
+        .maybeSingle(),
     );
   } catch (e) {
     // Um id que não é uuid dá 22P02 (já traduzido para «não encontrado»).
@@ -298,6 +337,8 @@ export async function updateProduct(
   const defined = Object.fromEntries(
     Object.entries(patch).filter(([, v]) => v !== undefined),
   ) as Database['public']['Tables']['products']['Update'];
+  // Sem nada para mudar, não há pedido.
+  if (Object.keys(defined).length === 0) return;
   await exec(() => supabase.from('products').update(defined).eq('id', id));
 }
 

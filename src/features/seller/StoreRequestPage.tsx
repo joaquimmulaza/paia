@@ -1,16 +1,7 @@
 // Ecrãs V02 · Pedido de loja e V02b · erros e envio.
 // O rascunho só exige nome e categoria; para enviar, também a descrição e o logótipo.
 // A loja em análise, aprovada ou suspensa não se edita aqui: segue para o ecrã do seu estado.
-import { ChevronDown, CircleAlert } from 'lucide-react';
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/paia/AppHeader';
@@ -22,10 +13,17 @@ import { currentUserId } from '@/features/auth/AuthProvider';
 import { errorMessage } from '@/features/auth/AuthErrorAlert';
 import { LoadError } from '@/features/catalog/components/LoadError';
 import { useCategories } from '@/features/catalog/queries';
-import type { Category } from '@/features/catalog/types';
 import { MESSAGES } from '@/lib/errors';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { cn, focusRing } from '@/lib/utils';
+import {
+  CategorySelect,
+  controlClass,
+  describe,
+  FieldError,
+  fieldClass,
+  hintClass,
+} from './components/form-ui';
 import { ImagePicker, PickCancelled } from './components/ImagePicker';
 import {
   BackLink,
@@ -120,27 +118,6 @@ function initialValues(store: MyStore | null): StoreFormValues {
 
 function payload(values: StoreFormValues): StoreFormValues {
   return { ...values, name: values.name.trim(), description: values.description.trim() };
-}
-
-const fieldClass = 'flex flex-col gap-1.5';
-const hintClass = 'm-0 font-body text-caption font-medium text-ink-muted';
-const controlClass = cn(
-  'w-full min-w-0 rounded-md border-2 border-ink bg-surface px-4 py-3 font-body text-base text-ink',
-  'transition-[border-color,background-color] duration-[var(--duration-fast)] ease-[var(--ease-out)]',
-  'aria-invalid:border-danger aria-invalid:bg-danger-tint',
-  focusRing,
-);
-
-function FieldError({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <p
-      id={id}
-      className="m-0 flex items-start gap-1.5 font-body text-caption font-medium text-danger"
-    >
-      <CircleAlert aria-hidden="true" className="size-[18px] shrink-0" />
-      <span>{children}</span>
-    </p>
-  );
 }
 
 type Action = 'submit' | 'draft' | null;
@@ -289,7 +266,6 @@ function StoreForm({ initial, saved }: { initial: MyStore | null; saved: MyStore
       : null;
 
   const missing = Object.values(errors).filter(Boolean).length;
-  const describe = (...list: Array<string | false | undefined>) => cn(...list) || undefined;
 
   return (
     <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-4.5">
@@ -427,52 +403,5 @@ function StoreForm({ initial, saved }: { initial: MyStore | null; saved: MyStore
         </div>
       )}
     </form>
-  );
-}
-
-type CategorySelectProps = {
-  id: string;
-  selectRef: RefObject<HTMLSelectElement>;
-  categories: Category[] | undefined;
-  value: string;
-  onChange: (value: string) => void;
-  invalid: boolean;
-  describedBy: string | undefined;
-};
-
-function CategorySelect({
-  id,
-  selectRef,
-  categories,
-  value,
-  onChange,
-  invalid,
-  describedBy,
-}: CategorySelectProps) {
-  return (
-    <div className="relative">
-      <select
-        ref={selectRef}
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-invalid={invalid || undefined}
-        aria-describedby={describedBy}
-        className={cn(controlClass, 'min-h-[52px] cursor-pointer appearance-none pr-11')}
-      >
-        <option value="" disabled>
-          {categories ? 'Escolhe uma categoria' : 'A carregar as categorias…'}
-        </option>
-        {categories?.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        aria-hidden="true"
-        className="pointer-events-none absolute top-1/2 right-3.5 size-5 -translate-y-1/2 text-ink"
-      />
-    </div>
   );
 }

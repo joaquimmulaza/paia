@@ -42,6 +42,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import {
+  countMyProducts,
   createProduct,
   deleteProduct,
   getMyProduct,
@@ -60,6 +61,7 @@ import { MESSAGES, translateDbError } from '@/lib/errors';
 
 interface Result {
   data?: unknown;
+  count?: number | null;
   error?: { message: string; code?: string } | null;
 }
 
@@ -296,7 +298,7 @@ const productRow = {
 describe('listMyProducts', () => {
   it('lê products com colunas explícitas, ordem fixa e pede 21 para saber se há mais', async () => {
     queue({ data: [productRow], error: null });
-    const page = await listMyProducts('all');
+    const page = await listMyProducts('s1', 'all');
     expect(mocks.state.calls[0]!.table).toBe('products');
     expect(String(op('select')![1])).not.toContain('*');
     expect(ops().filter((o) => o[0] === 'order')).toEqual([
@@ -313,7 +315,11 @@ describe('listMyProducts', () => {
       isPublished: true,
       createdAt: '2026-11-28T10:00:00.654321+00:00',
       mainImagePath: 'products/s1/p1/a.webp',
+      moderationReason: null,
     });
+    // O RLS público mostra os produtos de todas as lojas: a lista fica presa à loja do dono.
+    expect(op('eq')).toEqual(['eq', 'store_id', 's1']);
+    expect(String(op('select')![1])).toContain('moderation_reason');
   });
 
   it('com mais de 20 linhas, devolve 20 e o cursor do último', async () => {
@@ -323,46 +329,63 @@ describe('listMyProducts', () => {
       created_at: `2026-11-28T10:00:${String(59 - i).padStart(2, '0')}.5+00:00`,
     }));
     queue({ data: rows, error: null });
-    const page = await listMyProducts('all');
+    const page = await listMyProducts('s1', 'all');
     expect(page.items).toHaveLength(20);
     expect(page.next).toEqual({ createdAt: rows[19]!.created_at, id: 'p19' });
   });
 
   it('o cursor pede só o que vem depois (created_at, id), com o texto bruto', async () => {
     queue({ data: [], error: null });
-    await listMyProducts('all', { createdAt: '2026-11-28T10:00:00.654321+00:00', id: 'p9' });
+    await listMyProducts('s1', 'all', { createdAt: '2026-11-28T10:00:00.654321+00:00', id: 'p9' });
     expect(op('or')![1]).toBe(
       'created_at.lt."2026-11-28T10:00:00.654321+00:00",and(created_at.eq."2026-11-28T10:00:00.654321+00:00",id.lt.p9)',
     );
   });
 
   it.each([
-    ['published', [['eq', 'is_published', true]]],
+    [
+      'published',
+      [
+        ['eq', 'store_id', 's1'],
+        ['eq', 'is_published', true],
+      ],
+    ],
     [
       'sold_out',
       [
+        ['eq', 'store_id', 's1'],
         ['eq', 'is_published', true],
         ['eq', 'stock', 0],
       ],
     ],
-    ['hidden', [['eq', 'is_published', false]]],
-    ['all', []],
+    [
+      'hidden',
+      [
+        ['eq', 'store_id', 's1'],
+        ['eq', 'is_published', false],
+      ],
+    ],
+    ['all', [['eq', 'store_id', 's1']]],
   ] as const)('o filtro %s', async (filter, expected) => {
     queue({ data: [], error: null });
-    await listMyProducts(filter);
+    await listMyProducts('s1', filter);
     expect(ops().filter((o) => o[0] === 'eq')).toEqual(expected);
   });
 
   it('uma falha da base vira texto PT-AO', async () => {
     queue({ data: null, error: { message: 'permission denied', code: '42501' } });
-    await expect(listMyProducts('all')).rejects.toThrow(MESSAGES.generic);
+    await expect(listMyProducts('s1', 'all')).rejects.toThrow(MESSAGES.generic);
   });
 });
 
 describe('getMyProduct', () => {
   it('devolve null quando não existe (ou não é teu)', async () => {
     queue({ data: null, error: null });
-    expect(await getMyProduct('p1')).toBeNull();
+    expect(await getMyProduct('s1', 'p1')).toBeNull();
+    expect(ops().filter((o) => o[0] === 'eq')).toEqual([
+      ['eq', 'id', 'p1'],
+      ['eq', 'store_id', 's1'],
+    ]);
   });
 
   it('devolve o detalhe com as fotos por ordem', async () => {
@@ -378,7 +401,7 @@ describe('getMyProduct', () => {
       },
       error: null,
     });
-    const p = await getMyProduct('p1');
+    const p = await getMyProduct('s1', 'p1');
     expect(p).toMatchObject({ id: 'p1', description: 'Fofo', categoryId: 'c1' });
     expect(p?.images).toEqual([
       { id: 'i1', path: 'a', position: 0 },
@@ -412,7 +435,36 @@ describe('createProduct', () => {
   });
 });
 
+describe('countMyProducts', () => {
+  it.each([
+    ['all', [['eq', 'store_id', 's1']]],
+    [
+      'sold_out',
+      [
+        ['eq', 'store_id', 's1'],
+        ['eq', 'is_published', true],
+        ['eq', 'stock', 0],
+      ],
+    ],
+  ] as const)('conta %s só com o cabeçalho, com os filtros da lista', async (filter, expected) => {
+    queue({ data: null, count: 7, error: null });
+    expect(await countMyProducts('s1', filter)).toBe(7);
+    expect(op('select')).toEqual(['select', 'id', { count: 'exact', head: true }]);
+    expect(ops().filter((o) => o[0] === 'eq')).toEqual(expected);
+  });
+
+  it('uma falha da base vira texto PT-AO', async () => {
+    queue({ data: null, error: { message: 'boom', code: '42501' } });
+    await expect(countMyProducts('s1', 'all')).rejects.toThrow(MESSAGES.generic);
+  });
+});
+
 describe('updateProduct', () => {
+  it('sem campos, não faz pedido nenhum', async () => {
+    await updateProduct('p1', {});
+    expect(mocks.state.calls).toHaveLength(0);
+  });
+
   it('envia só os campos dados, em snake_case', async () => {
     queue({ error: null });
     await updateProduct('p1', { stock: 0, isPublished: false });

@@ -56,6 +56,8 @@ export interface MyProduct {
   stock: number;
   isPublished: boolean;
   moderationStatus: 'visible' | 'hidden';
+  /** O motivo, quando a administração ocultou o produto (F4). */
+  moderationReason: string | null;
   categoryId: string;
   createdAt: string;
   mainImagePath: string | null;
@@ -69,7 +71,6 @@ export interface ProductImage {
 
 export interface MyProductDetail extends MyProduct {
   description: string;
-  moderationReason: string | null;
   images: ProductImage[];
 }
 

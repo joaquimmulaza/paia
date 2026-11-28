@@ -41,6 +41,15 @@ export const MESSAGES = {
     'Não foi possível enviar o pedido. Verifica a ligação e tenta outra vez. O que escreveste ficou guardado.',
   saveFailed:
     'Não foi possível guardar o rascunho. Verifica a ligação e tenta outra vez. O que escreveste continua aqui.',
+  // V05b e V06b: produtos.
+  productsLoadFailed:
+    'Não foi possível carregar os produtos. Verifica a ligação e tenta outra vez.',
+  productNameRequired: 'Escreve o nome do produto.',
+  productPriceInvalid: 'O preço tem de ser pelo menos 1 Kz, sem casas decimais.',
+  productPriceTooHigh: 'O preço pode ir até 10 000 000 Kz.',
+  productStockInvalid: 'Indica um número inteiro, 0 ou mais.',
+  productPhotosFull: 'Já tens 5 fotos. Remove uma para juntar outra.',
+  productPhotosUploading: 'Espera que as fotos acabem de enviar e guarda outra vez.',
   /** V02b: o resumo dos campos em falta ao enviar. */
   missingFields: (n: number) =>
     n === 1

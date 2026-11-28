@@ -129,14 +129,21 @@ describe('rotas da aplicação', () => {
     expect(router.state.location.search).toBe('?voltar=%2Fadmin%2Fdestaques');
   });
 
-  it.each(['/vender', '/vender/pedido', '/vender/estado', '/vender/pedido/ver'])(
-    '%s sem sessão vai para /entrar com voltar',
-    async (path) => {
-      const { router } = renderRoutes(routes, path);
-      expect(await screen.findByRole('heading', { name: 'Entra no PAIÁ' })).toBeInTheDocument();
-      expect(new URLSearchParams(router.state.location.search).get('voltar')).toBe(path);
-    },
-  );
+  it.each([
+    '/vender',
+    '/vender/pedido',
+    '/vender/estado',
+    '/vender/pedido/ver',
+    '/vender/loja',
+    '/vender/loja/editar',
+    '/vender/produtos',
+    '/vender/produtos/novo',
+    '/vender/produtos/p1',
+  ])('%s sem sessão vai para /entrar com voltar', async (path) => {
+    const { router } = renderRoutes(routes, path);
+    expect(await screen.findByRole('heading', { name: 'Entra no PAIÁ' })).toBeInTheDocument();
+    expect(new URLSearchParams(router.state.location.search).get('voltar')).toBe(path);
+  });
 
   it('/vender com sessão de estudante sem loja mostra o V01', async () => {
     auth.state = { session: { user: { id: 'u1' } }, loading: false };
