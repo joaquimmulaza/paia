@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(195);
+select plan(199);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -1074,6 +1074,35 @@ select results_eq(
 
 set local role anon;
 select throws_ok($$ select public.can_write_media('store-media', 'x') $$, '42501', null, '(l) anon não chama can_write_media');
+reset role;
+
+-- ===========================================================================
+-- (m) Categoria dos produtos do dono
+-- ===========================================================================
+-- snacks está escondida desde (b) (o id vem de t_snacks). Um produto da loja
+-- de 1 em roupas-e-moda, que a administração esconde depois.
+create temp table t_roupas as select id from public.categories where slug = 'roupas-e-moda';
+grant select on t_roupas to authenticated;
+insert into public.products (store_id, category_id, name, price_kz, stock)
+values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), (select id from t_roupas), 'Camisola', 4000, 1);
+insert into t_prod select 'camisola', id from public.products where name = 'Camisola';
+update public.categories set is_visible = false where slug = 'roupas-e-moda';
+
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select throws_ok(
+  $$ insert into public.products (store_id, category_id, name, price_kz, stock)
+     values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), (select id from t_snacks), 'Pipocas', 100, 1) $$,
+  'P0001', 'CATEGORY_NOT_FOUND', '(m) criar um produto numa categoria escondida dá CATEGORY_NOT_FOUND');
+select throws_ok(
+  format($$ update public.products set category_id = (select id from t_snacks) where id = %L $$, pg_temp.pid('bolo')),
+  'P0001', 'CATEGORY_NOT_FOUND', '(m) mudar para uma categoria escondida dá CATEGORY_NOT_FOUND');
+select is(pg_temp.rows_of(format($$ update public.products set price_kz = 4500 where id = %L $$, pg_temp.pid('camisola'))), 1,
+  '(m) alterar outro campo de um produto cuja categoria foi escondida depois é aceite');
+select is(
+  pg_temp.rows_of(format($$ update public.products set category_id = (select id from t_roupas), stock = 2 where id = %L $$,
+                         pg_temp.pid('camisola'))),
+  1, '(m) repetir a mesma categoria escondida no UPDATE é aceite');
 reset role;
 
 select * from finish();

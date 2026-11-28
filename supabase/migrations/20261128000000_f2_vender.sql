@@ -766,6 +766,8 @@ grant delete on public.product_images to authenticated;
 --    * Concorrência: publicar (UPDATE da linha do produto) e apagar uma foto
 --      (FOR NO KEY UPDATE na linha do produto) ficam em série. Quem espera
 --      volta a contar as fotos com um snapshot novo (READ COMMITTED).
+--    * A categoria de um produto do dono tem de estar visível ao criar e ao
+--      mudar de categoria (CATEGORY_NOT_FOUND).
 --    * set_product_image_order troca as posições numa só transação, com a
 --      unique (product_id, position) adiada até ao fim da troca.
 -- ---------------------------------------------------------------------------
@@ -797,6 +799,35 @@ revoke execute on function private.enforce_product_photos() from public, anon, a
 create trigger enforce_product_photos
   before insert or update of is_published on public.products
   for each row execute function private.enforce_product_photos();
+
+-- A categoria de um produto escrito pelo dono tem de estar visível
+-- (CATEGORY_NOT_FOUND): ao criar, sempre; ao alterar, só quando category_id
+-- muda (o produto mantém uma categoria que a administração escondeu depois,
+-- como save_my_store). Mesma isenção de papéis que as regras das fotos.
+-- Como authenticated, a RLS categories_select_visible só mostra as visíveis
+-- (e is_visible nem tem grant), por isso basta procurar o id.
+create function private.check_product_category()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') then
+    return new;
+  end if;
+
+  if (tg_op = 'INSERT' or new.category_id is distinct from old.category_id)
+     and not exists (select 1 from public.categories c where c.id = new.category_id) then
+    raise exception using errcode = 'P0001', message = 'CATEGORY_NOT_FOUND';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.check_product_category() from public, anon, authenticated;
+
+create trigger check_product_category
+  before insert or update of category_id on public.products
+  for each row execute function private.check_product_category();
 
 create function private.keep_last_photo()
 returns trigger
