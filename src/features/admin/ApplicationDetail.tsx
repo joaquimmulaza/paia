@@ -176,10 +176,10 @@ export function ApplicationDetail({ storeId, onDecided, focusTitle, onTitleFocus
                 </dd>
               </dl>
             </div>
-            {/* Não é montado de novo quando a loja foi reenviada (ALREADY_DECIDED): a mensagem
-                escrita e as caixas ficam, e a decisão seguinte usa o submitted_at novo. */}
+            {/* Não é montado de novo quando a loja é reenviada: a mensagem escrita fica. */}
             <DecisionForm
               application={app}
+              onStaleSubmission={() => setAlreadyDecided(true)}
               onAlreadyDecided={async () => {
                 setAlreadyDecided(true);
                 await invalidateApplications(queryClient);
@@ -204,11 +204,19 @@ export function ApplicationDetail({ storeId, onDecided, focusTitle, onTitleFocus
 type FormProps = {
   application: Application;
   onAlreadyDecided: () => Promise<void>;
+  /** O detalhe foi lido de novo com outro envio (sem conflito): mostra o aviso do A01b. */
+  onStaleSubmission: () => void;
   onClearNotice: () => void;
   onDecided: () => void;
 };
 
-function DecisionForm({ application: app, onAlreadyDecided, onClearNotice, onDecided }: FormProps) {
+function DecisionForm({
+  application: app,
+  onAlreadyDecided,
+  onStaleSubmission,
+  onClearNotice,
+  onDecided,
+}: FormProps) {
   const ids = { message: useId(), messageError: useId() };
   const [checklist, setChecklist] = useState<Checklist>(EMPTY_CHECKLIST);
   const [message, setMessage] = useState('');
@@ -217,6 +225,20 @@ function DecisionForm({ application: app, onAlreadyDecided, onClearNotice, onDec
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const failureRef = useRef<HTMLDivElement>(null);
 
+  // O envio que o admin está a analisar. A decisão leva sempre este valor, não o da última
+  // leitura: se o detalhe for lido de novo em segundo plano (por exemplo, ao voltar à janela)
+  // e a loja tiver sido reenviada com outro conteúdo, a base recusa com ALREADY_DECIDED em vez
+  // de aprovar o que ninguém viu.
+  const [reviewedSubmittedAt, setReviewedSubmittedAt] = useState(app.submittedAt);
+  useEffect(() => {
+    if (app.submittedAt === reviewedSubmittedAt) return;
+    // Envio novo: o aviso, as caixas vazias (são sobre o conteúdo anterior) e a mensagem fica.
+    // Só depois disto a decisão passa a ser sobre o envio novo.
+    onStaleSubmission();
+    setChecklist(EMPTY_CHECKLIST);
+    setReviewedSubmittedAt(app.submittedAt);
+  }, [app.submittedAt, reviewedSubmittedAt, onStaleSubmission]);
+
   const decide = useMutation({
     mutationFn: (decision: 'approved' | 'rejected') =>
       decideStore({
@@ -224,7 +246,7 @@ function DecisionForm({ application: app, onAlreadyDecided, onClearNotice, onDec
         decision,
         message,
         checklist,
-        expectedSubmittedAt: app.submittedAt,
+        expectedSubmittedAt: reviewedSubmittedAt,
       }),
     onMutate: () => {
       setFailure(null);

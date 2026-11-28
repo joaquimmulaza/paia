@@ -318,6 +318,48 @@ describe('ApplicationsPage (A01)', () => {
     );
   });
 
+  it('um reenvio lido em segundo plano mostra o aviso, limpa as caixas e mantém a mensagem', async () => {
+    const user = userEvent.setup();
+    api.decideStore.mockResolvedValue('approved');
+    const { queryClient } = mount();
+    const detail = await detailBox('Doces da Ana');
+    const box = within(detail).getByRole('checkbox', {
+      name: 'Nome e descrição dizem claramente o que a loja vende.',
+    });
+    await user.click(box);
+    await user.type(within(detail).getByLabelText('Mensagem para a candidata'), 'Revê as fotos.');
+    expect(box).toBeChecked();
+
+    // Enquanto o admin estava noutra janela, a loja foi recusada e reenviada com outro conteúdo;
+    // o detalhe volta a ser lido sem conflito (por exemplo, ao voltar à janela).
+    api.getApplication.mockImplementation(async (id: string) => {
+      const s = PENDING.find((p) => p.id === id);
+      return s ? detailOf(s, { submittedAt: '2026-11-28T11:00:00.000Z' }) : null;
+    });
+    await queryClient.invalidateQueries();
+
+    expect(await within(detail).findByRole('alert')).toHaveTextContent(MESSAGES.alreadyDecided);
+    expect(
+      within(detail).getByRole('checkbox', {
+        name: 'Nome e descrição dizem claramente o que a loja vende.',
+      }),
+    ).not.toBeChecked();
+    expect(within(detail).getByLabelText('Mensagem para a candidata')).toHaveValue(
+      'Revê as fotos.',
+    );
+    expect(api.decideStore).not.toHaveBeenCalled();
+
+    // Depois do aviso, a decisão seguinte é sobre o envio novo.
+    await user.click(within(detail).getByRole('button', { name: 'Aprovar loja' }));
+    await waitFor(() => expect(api.decideStore).toHaveBeenCalledTimes(1));
+    expect(api.decideStore).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedSubmittedAt: '2026-11-28T11:00:00.000Z',
+        checklist: { name_description: false, allowed: false, images: false, account: false },
+      }),
+    );
+  });
+
   it('outra falha mostra o erro do A01b e deixa tentar outra vez', async () => {
     const user = userEvent.setup();
     api.decideStore.mockRejectedValue(new Error(MESSAGES.decisionFailed));
