@@ -6,7 +6,7 @@
 
 ## Agora
 
-- **Fase atual:** F2 · Vender, ainda sem desenho nem plano. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
+- **Fase atual:** F2 · Vender, com desenho aprovado (`docs/superpowers/specs/2026-11-28-f2-vender-design.md`) e plano escrito. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
 - **Tarefa seguinte:** o responsável aprovou o desenho do F2 em 2026-11-28. O plano está em `docs/superpowers/plans/2026-11-28-f2-vender.md`, com 8 tarefas. Falta o responsável rever o plano e escolher a forma de execução. Depois cria-se o branch `f2-vender` a partir de `main` e começa-se pela Task 1.
 - **Trabalho a meio:** nenhum.
 - **Branches:**
