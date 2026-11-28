@@ -258,6 +258,21 @@ describe('ProductFormPage, novo produto (V06)', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/vender/produtos'));
     expect(sellerApi.deleteProduct).toHaveBeenCalledWith('new-1', ['products/s1/new-1/u1.webp']);
   });
+
+  it('com «Cancelar» a apagar, «Publicar produto» não guarda nem envia fotos', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount('/vender/produtos/novo');
+    await fillValid(user);
+    await user.upload(screen.getByLabelText('Juntar foto'), png());
+    await screen.findByRole('button', { name: 'Foto 1, principal' });
+    sellerApi.deleteProduct.mockReturnValue(new Promise(() => {}));
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(sellerApi.deleteProduct).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Publicar produto' }));
+    expect(sellerApi.updateProduct).not.toHaveBeenCalled();
+    expect(sellerApi.uploadProductImage).toHaveBeenCalledTimes(1);
+    expect(sellerApi.createProduct).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ProductFormPage, editar produto (V06b)', () => {

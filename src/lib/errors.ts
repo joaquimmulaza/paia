@@ -52,6 +52,7 @@ export const MESSAGES = {
   productStockInvalid: 'Indica um número inteiro, 0 ou mais.',
   productPhotosFull: 'Já tens 5 fotos. Remove uma para juntar outra.',
   productPhotosUploading: 'Espera que as fotos acabem de enviar e guarda outra vez.',
+  storeImagesUploading: 'Espera que as imagens acabem de enviar e guarda outra vez.',
   /** V02b: o resumo dos campos em falta ao enviar. */
   missingFields: (n: number) =>
     n === 1

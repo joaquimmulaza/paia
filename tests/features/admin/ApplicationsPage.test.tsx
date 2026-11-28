@@ -466,6 +466,47 @@ describe('ApplicationsPage (A01b), recusadas e histórico', () => {
     expect(row).toHaveTextContent('Joana A.');
   });
 
+  it('se o histórico de uma decidida não carregar, mostra o erro e deixa tentar outra vez', async () => {
+    const user = userEvent.setup();
+    // Só a primeira leitura do histórico da recusada falha.
+    let failed = false;
+    api.listStoreDecisions.mockImplementation(async (id: string) => {
+      if (id !== REJECTED.id) return [];
+      if (!failed) {
+        failed = true;
+        throw new Error(MESSAGES.generic);
+      }
+      return DECISIONS;
+    });
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Recusadas' }));
+    const list = await screen.findByRole('region', { name: 'Candidaturas recusadas' });
+    await within(list).findByRole('button', { name: 'Capas da Rita' });
+    const detail = await detailBox('Capas da Rita');
+    expect(await within(detail).findByRole('alert')).toHaveTextContent(MESSAGES.generic);
+    // Sem histórico, não se mostra um histórico incompleto nem a decisão em falta.
+    expect(within(detail).queryByRole('list')).not.toBeInTheDocument();
+    expect(within(detail).queryByText(/Enviada para análise\./)).not.toBeInTheDocument();
+    await user.click(within(detail).getByRole('button', { name: 'Tentar outra vez' }));
+    expect(await within(detail).findByText('3 de 4 itens confirmados')).toBeInTheDocument();
+    expect(within(detail).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(detail).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('se o histórico de uma pendente não carregar, o formulário fica e o erro deixa tentar outra vez', async () => {
+    const user = userEvent.setup();
+    api.listApplications.mockResolvedValue([PENDING[0]]);
+    api.listStoreDecisions.mockRejectedValueOnce(new Error(MESSAGES.generic));
+    api.listStoreDecisions.mockResolvedValue(DECISIONS);
+    mount();
+    const detail = await detailBox('Doces da Ana');
+    expect(await within(detail).findByRole('alert')).toHaveTextContent(MESSAGES.generic);
+    expect(within(detail).getByRole('button', { name: 'Aprovar loja' })).toBeInTheDocument();
+    await user.click(within(detail).getByRole('button', { name: 'Tentar outra vez' }));
+    const items = await within(detail).findAllByRole('listitem');
+    expect(items[1]).toHaveTextContent(/Recusada por Joana A\./);
+  });
+
   it('uma pendente com recusas anteriores mostra o histórico debaixo do formulário', async () => {
     api.listApplications.mockResolvedValue([PENDING[0]]);
     api.listStoreDecisions.mockResolvedValue(DECISIONS);

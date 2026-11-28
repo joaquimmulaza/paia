@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { AuthErrorAlert, errorMessage } from '@/features/auth/AuthErrorAlert';
 import { currentUserId, useAuth } from '@/features/auth/AuthProvider';
 import { AFFILIATION_LABEL } from '@/features/auth/labels';
+import { LoadError } from '@/features/catalog/components/LoadError';
 import { tagClass } from '@/features/catalog/components/tag-styles';
 import { describe, FieldError } from '@/features/seller/components/form-ui';
 import { HistoryItem, StoreMark } from '@/features/seller/components/seller-ui';
@@ -142,6 +143,14 @@ export function ApplicationDetail({ storeId, onDecided, focusTitle, onTitleFocus
   const app = application.data;
   const tag = STATUS_TAG[app.status];
   const history = decisions.data ?? [];
+  // Sem as decisões, o histórico e a última decisão ficariam incompletos: mostra-se o erro.
+  const historyError = decisions.isError ? (
+    <LoadError
+      error={decisions.error}
+      retrying={decisions.isFetching}
+      onRetry={() => void decisions.refetch()}
+    />
+  ) : null;
 
   return (
     <section aria-labelledby={titleId} className={cn(boxClass, 'flex-[2_1_520px]')}>
@@ -188,13 +197,16 @@ export function ApplicationDetail({ storeId, onDecided, focusTitle, onTitleFocus
               onClearNotice={() => setAlreadyDecided(false)}
               onDecided={() => onDecided(storeId)}
             />
-            {history.length > 0 && <History application={app} decisions={history} />}
+            {historyError ??
+              (history.length > 0 && <History application={app} decisions={history} />)}
           </>
         ) : (
-          <>
-            <DecidedSummary latest={history[0]} />
-            <History application={app} decisions={history} />
-          </>
+          (historyError ?? (
+            <>
+              <DecidedSummary latest={history[0]} />
+              <History application={app} decisions={history} />
+            </>
+          ))
         )}
       </div>
     </section>

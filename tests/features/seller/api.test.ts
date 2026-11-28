@@ -466,21 +466,34 @@ describe('updateProduct', () => {
   });
 
   it('envia só os campos dados, em snake_case', async () => {
-    queue({ error: null });
+    queue({ data: [{ id: 'p1' }], error: null });
     await updateProduct('p1', { stock: 0, isPublished: false });
     expect(op('update')![1]).toEqual({ stock: 0, is_published: false });
     expect(op('eq')).toEqual(['eq', 'id', 'p1']);
+    expect(op('select')).toEqual(['select', 'id']);
+  });
+
+  it('se as RLS não deixam tocar em nenhuma linha, é NOT_ALLOWED (não um sucesso falso)', async () => {
+    queue({ data: [], error: null });
+    await expect(updateProduct('p1', { stock: 1 })).rejects.toThrow(MESSAGES.notAllowed);
   });
 });
 
 describe('deleteProduct', () => {
   it('apaga a linha e depois os ficheiros', async () => {
-    queue({ error: null });
+    queue({ data: [{ id: 'p1' }], error: null });
     mocks.remove.mockResolvedValue({ data: [], error: null });
     await deleteProduct('p1', ['products/s1/p1/a.webp']);
     expect(op('delete')).toBeDefined();
     expect(mocks.storageFrom).toHaveBeenCalledWith('product-media');
     expect(mocks.remove).toHaveBeenCalledWith(['products/s1/p1/a.webp']);
+    expect(op('select')).toEqual(['select', 'id']);
+  });
+
+  it('se as RLS não deixam apagar nenhuma linha, é NOT_ALLOWED e os ficheiros ficam', async () => {
+    queue({ data: [], error: null });
+    await expect(deleteProduct('p1', ['a'])).rejects.toThrow(MESSAGES.notAllowed);
+    expect(mocks.remove).not.toHaveBeenCalled();
   });
 
   it('se a linha não se apaga, os ficheiros ficam', async () => {
@@ -490,19 +503,19 @@ describe('deleteProduct', () => {
   });
 
   it('se o Storage falhar depois, não lança (órfãos revistos à mão)', async () => {
-    queue({ error: null });
+    queue({ data: [{ id: 'p1' }], error: null });
     mocks.remove.mockRejectedValue(new TypeError('Failed to fetch'));
     await expect(deleteProduct('p1', ['a'])).resolves.toBeUndefined();
   });
 
   it('se o Storage devolver erro, não lança', async () => {
-    queue({ error: null });
+    queue({ data: [{ id: 'p1' }], error: null });
     mocks.remove.mockResolvedValue({ data: null, error: { message: 'x' } });
     await expect(deleteProduct('p1', ['a'])).resolves.toBeUndefined();
   });
 
   it('sem ficheiros não chama o Storage', async () => {
-    queue({ error: null });
+    queue({ data: [{ id: 'p1' }], error: null });
     await deleteProduct('p1', []);
     expect(mocks.remove).not.toHaveBeenCalled();
   });

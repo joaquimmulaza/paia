@@ -339,12 +339,20 @@ export async function updateProduct(
   ) as Database['public']['Tables']['products']['Update'];
   // Sem nada para mudar, não há pedido.
   if (Object.keys(defined).length === 0) return;
-  await exec(() => supabase.from('products').update(defined).eq('id', id));
+  touched(await exec(() => supabase.from('products').update(defined).eq('id', id).select('id')));
+}
+
+/**
+ * As RLS não dão erro quando filtram a linha: o pedido «passa» com 0 linhas (o produto
+ * não existe ou a loja deixou de estar aprovada). Isso é uma recusa, não um sucesso.
+ */
+function touched(data: unknown): void {
+  if (rows(data).length === 0) throw new Error(MESSAGES.notAllowed);
 }
 
 /** Apaga a linha (as fotos saem em cascata) e só depois os ficheiros. */
 export async function deleteProduct(id: string, imagePaths: string[]): Promise<void> {
-  await exec(() => supabase.from('products').delete().eq('id', id));
+  touched(await exec(() => supabase.from('products').delete().eq('id', id).select('id')));
   await removeFiles('product-media', imagePaths);
 }
 

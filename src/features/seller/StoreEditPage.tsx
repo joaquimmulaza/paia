@@ -12,6 +12,7 @@ import { currentUserId } from '@/features/auth/AuthProvider';
 import { errorMessage } from '@/features/auth/AuthErrorAlert';
 import { LoadError } from '@/features/catalog/components/LoadError';
 import { useCategories } from '@/features/catalog/queries';
+import { MESSAGES } from '@/lib/errors';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { cn } from '@/lib/utils';
 import { useApprovedStore } from './components/approved-store';
@@ -81,6 +82,8 @@ function EditForm({ store }: { store: MyStore }) {
   }));
   const [errors, setErrors] = useState<StoreErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  // Logótipo ou capa ainda a comprimir ou a enviar: guardar agora gravaria o caminho antigo.
+  const [uploading, setUploading] = useState({ logo: false, cover: false });
   const refs = {
     name: useRef<HTMLInputElement>(null),
     description: useRef<HTMLTextAreaElement>(null),
@@ -104,6 +107,10 @@ function EditForm({ store }: { store: MyStore }) {
     event.preventDefault();
     if (save.isPending) return;
     setServerError(null);
+    if (uploading.logo || uploading.cover) {
+      setServerError(MESSAGES.storeImagesUploading);
+      return;
+    }
     // A loja aprovada não perde o que o envio exigiu: valida como no envio.
     const found = validateStore(values, 'submit');
     setErrors(found);
@@ -205,6 +212,7 @@ function EditForm({ store }: { store: MyStore }) {
         label="Logótipo"
         value={values.logoPath}
         onPick={pickFor('logo')}
+        onUploadingChange={(busy) => setUploading((u) => ({ ...u, logo: busy }))}
         error={errors.logoPath}
         required
       />
@@ -213,6 +221,7 @@ function EditForm({ store }: { store: MyStore }) {
         feminine
         value={values.coverPath}
         onPick={pickFor('cover')}
+        onUploadingChange={(busy) => setUploading((u) => ({ ...u, cover: busy }))}
         onRemove={() => set('coverPath', null)}
         optional
       />

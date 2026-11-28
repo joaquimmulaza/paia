@@ -27,6 +27,9 @@ export async function compressImage(file: File): Promise<Blob> {
       fileType: 'image/webp',
       initialQuality: 0.8,
       maxSizeMB: 2,
+      // Sem Web Worker: com ele, a biblioteca vai buscar o script do worker a um CDN de
+      // terceiros em tempo de execução. A compressão corre na thread principal.
+      useWebWorker: false,
     });
   } catch {
     throw new Error('compress_failed');

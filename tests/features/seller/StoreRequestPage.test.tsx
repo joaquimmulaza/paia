@@ -166,6 +166,23 @@ describe('StoreRequestPage (V02, V02b)', () => {
     expect(screen.getByLabelText('Nome da loja')).toHaveValue('Doces da Ana');
   });
 
+  it('se o envio falhar já ao guardar, não diz que ficou guardado', async () => {
+    const user = userEvent.setup({ delay: null });
+    sellerApi.getMyStore.mockResolvedValue(makeStore({ logoPath: 'stores/store-1/logo-a.webp' }));
+    sellerApi.saveMyStore.mockRejectedValue(new Error('Algo correu mal. Tenta outra vez.'));
+    mount();
+    await waitFor(() => expect(screen.getByLabelText('Nome da loja')).toHaveValue('Doces da Ana'));
+    await user.click(screen.getByRole('button', { name: 'Enviar para análise' }));
+    expect(
+      await screen.findByText(
+        'Não foi possível guardar o rascunho. Verifica a ligação e tenta outra vez. O que escreveste continua aqui.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/O que escreveste ficou guardado/)).not.toBeInTheDocument();
+    expect(sellerApi.submitMyStore).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Nome da loja')).toHaveValue('Doces da Ana');
+  });
+
   it('«Guardar rascunho» só pede nome e categoria e avisa', async () => {
     const user = userEvent.setup({ delay: null });
     sellerApi.getMyStore.mockResolvedValue(null);

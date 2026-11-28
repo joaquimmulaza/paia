@@ -124,6 +124,34 @@ describe('StoreEditPage (V02c)', () => {
     });
   });
 
+  it('com o logótipo a enviar, «Guardar alterações» pede para esperar e não guarda', async () => {
+    const user = userEvent.setup({ delay: null });
+    sellerApi.uploadStoreImage.mockReturnValue(new Promise(() => {}));
+    mount();
+    await screen.findByRole('button', { name: 'Trocar' });
+    await user.upload(screen.getByLabelText('Logótipo'), png());
+    await waitFor(() => expect(sellerApi.uploadStoreImage).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Guardar alterações' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Espera que as imagens acabem de enviar e guarda outra vez.',
+    );
+    expect(sellerApi.saveMyStore).not.toHaveBeenCalled();
+  });
+
+  it('com a capa ainda a comprimir, «Guardar alterações» também espera', async () => {
+    const user = userEvent.setup({ delay: null });
+    images.compressImage.mockReturnValue(new Promise(() => {}));
+    mount();
+    await screen.findByRole('button', { name: 'Trocar' });
+    await user.upload(screen.getByLabelText('Imagem de capa (opcional)'), png());
+    await waitFor(() => expect(images.compressImage).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Guardar alterações' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Espera que as imagens acabem de enviar e guarda outra vez.',
+    );
+    expect(sellerApi.saveMyStore).not.toHaveBeenCalled();
+  });
+
   it('a descrição vazia mostra o erro do V02b e não guarda', async () => {
     const user = userEvent.setup({ delay: null });
     mount();

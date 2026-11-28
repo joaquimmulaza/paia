@@ -227,12 +227,15 @@ function StoreForm({ initial, saved }: { initial: MyStore | null; saved: MyStore
     setShowSummary(false);
     setAction(mode);
     const userId = currentUserId();
+    // «Ficou guardado» só é verdade se o guardar passou e foi o envio que falhou.
+    let savedOk = false;
     try {
       storeIdRef.current = await save.mutateAsync(payload(values));
+      savedOk = true;
       if (mode === 'submit') await submit.mutateAsync();
     } catch (error) {
       const message = errorMessage(error);
-      const fallback = mode === 'submit' ? MESSAGES.submitFailed : MESSAGES.saveFailed;
+      const fallback = savedOk ? MESSAGES.submitFailed : MESSAGES.saveFailed;
       setServerError(message === MESSAGES.generic ? fallback : message);
       setAction(null);
       return;

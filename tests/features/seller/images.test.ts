@@ -46,6 +46,8 @@ describe('compressImage', () => {
       fileType: 'image/webp',
       initialQuality: 0.8,
       maxSizeMB: 2,
+      // Sem Web Worker: a biblioteca carregaria o worker de um CDN de terceiros.
+      useWebWorker: false,
     });
   });
 

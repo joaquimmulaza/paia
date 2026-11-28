@@ -186,6 +186,10 @@ function ProductForm({ store, product, reload }: ProductFormProps) {
   const [errors, setErrors] = useState<ProductErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // «Cancelar» a meio (à espera do produto criado ou a apagá-lo): nada mais se guarda.
+  // Um ref, para a recusa valer já no mesmo clique, antes de o React voltar a desenhar.
+  const cancelling = useRef(false);
+  const [cancelPending, setCancelPending] = useState(false);
 
   // O produto (já criado, ou a ser criado): um só createProduct, mesmo com várias fotos.
   const productIdRef = useRef<string | null>(product?.id ?? null);
@@ -233,7 +237,7 @@ function ProductForm({ store, product, reload }: ProductFormProps) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (saving) return;
+    if (saving || cancelling.current || deleteMutation.isPending) return;
     setNotice(null);
     if (photos.uploading) {
       setNotice(MESSAGES.productPhotosUploading);
@@ -294,6 +298,9 @@ function ProductForm({ store, product, reload }: ProductFormProps) {
   }
 
   async function cancelNew() {
+    if (cancelling.current) return;
+    cancelling.current = true;
+    setCancelPending(true);
     // Só «Cancelar» apaga o produto que a primeira foto criou; sair de outra forma deixa-o oculto.
     const productId = productIdRef.current ?? (await creating.current?.catch(() => null));
     if (productId) {
@@ -304,7 +311,7 @@ function ProductForm({ store, product, reload }: ProductFormProps) {
     navigate(LIST);
   }
 
-  const busy = saving || deleteMutation.isPending;
+  const busy = saving || cancelPending || deleteMutation.isPending;
   const submitLabel = saving
     ? 'A guardar…'
     : !isNew

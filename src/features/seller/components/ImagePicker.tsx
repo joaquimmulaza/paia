@@ -35,6 +35,8 @@ type ImagePickerProps = {
   /** Erro vindo do formulário (por exemplo, o logótipo em falta ao enviar). */
   error?: string;
   bucket?: 'store-media' | 'product-media';
+  /** Avisa quando começa e acaba de preparar e enviar uma imagem (compressão incluída). */
+  onUploadingChange?: (uploading: boolean) => void;
 };
 
 type State =
@@ -64,6 +66,7 @@ export function ImagePicker({
   feminine = false,
   error,
   bucket = 'store-media',
+  onUploadingChange,
 }: ImagePickerProps) {
   const ids = { label: useId(), hint: useId(), error: useId(), input: useId() };
   const inputRef = useRef<HTMLInputElement>(null);
@@ -87,6 +90,12 @@ export function ImagePicker({
   const shownError = failed ? state.message : error;
   const src = value ? (preview ?? publicImageUrl(bucket, value)) : null;
   const done = !uploading && !failed && src !== null;
+
+  const onUploadingRef = useRef(onUploadingChange);
+  onUploadingRef.current = onUploadingChange;
+  useEffect(() => {
+    onUploadingRef.current?.(uploading);
+  }, [uploading]);
 
   useEffect(() => {
     if (done && focusChange.current) {
