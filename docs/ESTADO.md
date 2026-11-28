@@ -2,7 +2,7 @@
 
 > **Este ficheiro é a memória comum entre agentes** (Cursor, Antigravity, Claude Code). Cada agente atualiza-o **no fim de cada tarefa, no mesmo commit da tarefa**, como descreve o [`AGENTS.md`](../AGENTS.md). Não reescrevas linhas antigas: se uma decisão mudar, acrescenta uma linha nova que a substitui.
 >
-> **Última atualização:** 2026-11-28, com o F2 · Vender feito e em revisão no branch `f2-vender` (ainda não está em `main`). `main` continua em `9824ed8`, com F0+F1 online em https://paia-ugs.vercel.app.
+> **Última atualização:** 2026-11-28, com o F2 · Vender em `main` e online em https://paia-ugs.vercel.app (Supabase remoto com F0, F1 e F2).
 
 ## Agora
 
@@ -34,7 +34,7 @@
 | -------------------- | -------------- | ----------------------------------------------------------- |
 | F0 · Fundação        | Feita, em main | `docs/superpowers/plans/2026-11-25-f0-fundacao.md`          |
 | F1 · Catálogo        | Feita, em main | `docs/superpowers/plans/2026-11-26-f1-catalogo.md`          |
-| F2 · Vender          | Em revisão (`f2-vender`) | `docs/superpowers/plans/2026-11-28-f2-vender.md`            |
+| F2 · Vender          | Feita, em main e online | `docs/superpowers/plans/2026-11-28-f2-vender.md`            |
 | F3 · Pedidos         | Por planear    | —                                                           |
 | F4 · Confiança       | Por planear    | —                                                           |
 | F5 · PWA e piloto    | Por planear    | —                                                           |
@@ -215,7 +215,7 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 - **Ordem dos separadores no A01:** o A01 e o A01b do canvas têm ordens diferentes. Está implementado «Por analisar / Recusadas / Aprovadas», como no A01b. Confirmar.
 - **Checklist de aprovação:** a lista de 4 itens do A01 é uma proposta do desenho, só informativa (não impede aprovar). Confirmar os itens e se deve ser obrigatória.
 - **Textos novos do F2:** a folha «X02 · Textos novos do F2» no canvas (página Lote 3) lista todos os microtextos que a implementação acrescentou. Rever e mudar no canvas o que quiseres.
-- **Supabase remoto:** a migração `20261128000000_f2_vender.sql` **não** foi aplicada no remoto. Precisa de autorização explícita (`supabase db push`), depois do merge. O seed nunca vai para o remoto.
+- **Supabase remoto:** a migração `20261128000000_f2_vender.sql` foi aplicada no remoto em 2026-11-28, com autorização do responsável (versão alinhada no histórico; as 45 funções, as políticas e os grants por coluna são iguais ao local, comparados por md5). O seed nunca vai para o remoto.
 
 ### Anteriores
 
