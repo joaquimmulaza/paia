@@ -91,6 +91,8 @@ Os hashes são os de `main`; o branch `f1-catalogo` tem os mesmos commits com ou
 | 8. Ponta a ponta, seed, acessibilidade, README e verificação    | `ca04441`                        |
 | Revisão final (code-review high + security-review) e correções  | `ecfb45c`, `89bf9ec`             |
 
+Correção depois do F2 (2026-11-28): o «Quero vender» da página Início (C01) ainda mostrava «Disponível em breve»; passou a ser uma ligação para `/vender`. Revi os outros avisos «Disponível em breve»: carrinho, adicionar ao carrinho, notificações, «Pedidos recebidos» no V04b e a página Pedidos ficam para o F3; denúncias para o F4; «Esqueci-me da palavra-passe» continua sem ecrã na aplicação para definir a nova palavra-passe (o email de recuperação chega, mas falta a página).
+
 Rotas novas: `/vender`, `/vender/pedido`, `/vender/estado`, `/vender/pedido/ver`, `/vender/loja`, `/vender/loja/editar`, `/vender/produtos`, `/vender/produtos/novo`, `/vender/produtos/:id` e `/admin/candidaturas`. Migração nova: `supabase/migrations/20261128000000_f2_vender.sql`. O `seed.sql` ganhou uma estudante sem loja (`sara@exemplo.test`) e o logótipo (um caminho, sem ficheiro) da loja pendente.
 
 Pontos do F1 que o F2 resolveu:

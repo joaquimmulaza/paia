@@ -3,7 +3,6 @@ import { Search } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AppHeader } from '@/components/paia/AppHeader';
-import { comingSoon } from '@/components/paia/ComingSoon';
 import { PageShell } from '@/components/paia/PageShell';
 import { Button } from '@/components/ui/button';
 import { useDocumentTitle } from '@/lib/use-document-title';
@@ -236,8 +235,8 @@ function SellCard() {
         Cria a tua loja no PAIÁ. A equipa analisa o pedido e avisa-te quando a loja estiver
         aprovada.
       </p>
-      <Button variant="accent" className="self-start" onClick={comingSoon}>
-        Quero vender
+      <Button asChild variant="accent" className="self-start">
+        <Link to="/vender">Quero vender</Link>
       </Button>
     </section>
   );

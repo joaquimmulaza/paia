@@ -65,6 +65,7 @@ function renderHome() {
           </>
         ),
       },
+      { path: '/vender', element: <p>Página Quero vender</p> },
     ],
     '/',
   );
@@ -148,12 +149,15 @@ describe('HomePage (C01)', () => {
     expect(await screen.findByText('Disponível em breve')).toBeInTheDocument();
   });
 
-  it('«Quero vender» mostra «Disponível em breve»', async () => {
+  it('«Quero vender» é uma ligação para /vender (o F2 já existe)', async () => {
     const user = userEvent.setup({ delay: null });
     renderHome();
     const sell = section('Tens alguma coisa para vender?');
-    await user.click(within(sell).getByRole('button', { name: 'Quero vender' }));
-    expect(await screen.findByText('Disponível em breve')).toBeInTheDocument();
+    const link = within(sell).getByRole('link', { name: 'Quero vender' });
+    expect(link).toHaveAttribute('href', '/vender');
+    await user.click(link);
+    expect(await screen.findByText('Página Quero vender')).toBeInTheDocument();
+    expect(screen.queryByText('Disponível em breve')).not.toBeInTheDocument();
   });
 
   it('o cabeçalho tem o logótipo, as notificações e o carrinho, ambos «Disponível em breve»', async () => {
