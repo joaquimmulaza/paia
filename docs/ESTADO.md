@@ -7,7 +7,7 @@
 ## Agora
 
 - **Fase atual:** F2 · Vender, ainda sem desenho nem plano. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
-- **Tarefa seguinte:** escrever o plano do F2 em `docs/superpowers/plans/` (por exemplo `2026-11-2x-f2-vender.md`), a partir da secção 19 do spec, do `context.md` §4 e §5 e da lista «F2» em [Pontos adiados](#pontos-adiados). O responsável aprova o plano antes de começar o código. Depois, cria o branch `f2-vender` a partir de `main`.
+- **Tarefa seguinte:** o responsável aprova o desenho do F2 (`docs/superpowers/specs/2026-11-28-f2-vender-design.md`) e os ecrãs novos do canvas (V01b, V02b, V02c, V03b, V04b, V05b, V06b, K03c, A01b). Depois escreve-se o plano em `docs/superpowers/plans/2026-11-28-f2-vender.md` e cria-se o branch `f2-vender` a partir de `main`.
 - **Trabalho a meio:** nenhum.
 - **Branches:**
   - `main` tem F0 e F1;
