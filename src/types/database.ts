@@ -307,6 +307,9 @@ isOneToOne: true
               "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"product_categories": Json,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string
             }[]
                            },
+"is_listed_product":
+{ Args: { "p_id": string }; Returns: boolean
+                           },
 "list_featured_stores":
 { Args: Record<PropertyKey, never>; Returns: {
               "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string,"source": Database["public"]['Enums']["feature_source"]

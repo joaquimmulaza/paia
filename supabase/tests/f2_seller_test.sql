@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(199);
+select plan(204);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -899,6 +899,38 @@ select is((select name from public.products where id = pg_temp.pid('bolo')), 'Bo
 set local role anon;
 select is((select count(*)::int from public.products where id = pg_temp.pid('oculto')), 0, '(j) anon não vê o produto oculto');
 select is((select count(*)::int from public.products where id = pg_temp.pid('bolo')), 1, '(j) anon vê o produto publicado');
+reset role;
+
+-- As funções públicas do catálogo não mostram ao dono os seus produtos
+-- ocultos, mesmo que as RLS do dono os deixem ver: um oculto noutra
+-- categoria (gelados) e um publicado mas ocultado pela moderação
+-- (acessórios, criado como postgres).
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+with ins as (
+  insert into public.products (store_id, category_id, name, price_kz, stock)
+  values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('gelados'), 'Gelado oculto', 100, 1)
+  returning id)
+insert into t_prod select 'gelado-oculto', id from ins;
+reset role;
+insert into public.products (store_id, category_id, name, price_kz, stock, is_published, moderation_status, moderation_reason)
+values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('acessorios'), 'Moderado', 100, 1, true, 'hidden', 'Imprópria');
+insert into t_prod select 'moderado', id from public.products where name = 'Moderado';
+
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select results_eq(
+  $$ select id from public.search_products(p_store_slug => 'doces-da-ana') $$,
+  $$ select pg_temp.pid('bolo') $$,
+  '(j) search_products da própria loja só traz ao dono o produto publicado');
+select is((select count(*)::int from public.get_product(pg_temp.pid('oculto'))), 0,
+  '(j) get_product de um produto oculto do próprio dono dá 0 linhas');
+select is((select count(*)::int from public.get_product(pg_temp.pid('moderado'))), 0,
+  '(j) get_product de um produto do dono ocultado pela moderação dá 0 linhas');
+select is((select count(*)::int from public.get_product(pg_temp.pid('bolo'))), 1,
+  '(j) get_product do produto publicado do dono dá 1 linha');
+select is((select product_categories from public.get_store('doces-da-ana')), '[{"name": "Doces", "slug": "doces"}]'::jsonb,
+  '(j) os filtros de get_store não têm as categorias só de produtos ocultos');
 reset role;
 
 -- Loja suspensa: o dono vê os seus produtos mas não os altera.
