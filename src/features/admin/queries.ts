@@ -1,5 +1,5 @@
-// Chaves de cache da administração. Começam por 'me' para o AuthProvider as apagar
-// quando o utilizador muda (onUserChange remove ['me', …]).
+// Chaves de cache da administração. Começam por 'me' por convenção; ao mudar de conta,
+// o Providers limpa a cache inteira.
 import type { QueryClient } from '@tanstack/react-query';
 import { catalogKeys } from '@/features/catalog/queries';
 

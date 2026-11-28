@@ -77,7 +77,7 @@ describe('cache do perfil entre sessões', () => {
     expect(screen.queryByText('Utilizador Antigo')).toBeNull();
   });
 
-  it('ao mudar de conta, as consultas públicas do catálogo ficam e as da conta saem', async () => {
+  it('ao mudar de conta, a cache inteira é limpa: a loja e os produtos da conta anterior saem', async () => {
     mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } });
     let client!: ReturnType<typeof useQueryClient>;
     function Probe() {
@@ -97,10 +97,14 @@ describe('cache do perfil entre sessões', () => {
     const categories = [{ id: '1', name: 'Bolos', slug: 'bolos' }];
     client.setQueryData(['catalog', 'categories'], categories);
     client.setQueryData(['me', 'profile', 'user-a'], profile('Utilizador Antigo'));
+    client.setQueryData(['seller', 'store'], { name: 'Loja da conta A' });
+    client.setQueryData(['seller', 'products', 'all'], { pages: [] });
 
     act(() => mocks.state.listener?.('SIGNED_OUT', null));
 
-    expect(client.getQueryData(['catalog', 'categories'])).toEqual(categories);
+    expect(client.getQueryData(['seller', 'store'])).toBeUndefined();
+    expect(client.getQueryData(['seller', 'products', 'all'])).toBeUndefined();
     expect(client.getQueryData(['me', 'profile', 'user-a'])).toBeUndefined();
+    expect(client.getQueryData(['catalog', 'categories'])).toBeUndefined();
   });
 });

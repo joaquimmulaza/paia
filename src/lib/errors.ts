@@ -19,6 +19,23 @@ export const MESSAGES = {
   featureExists: 'Esta loja já está em destaque. Encontra-a na lista.',
   invalidPosition: 'A ordem tem de ser 0 ou mais.',
   invalidCursor: 'Não foi possível carregar mais resultados. Tenta outra vez.',
+  notStudent: 'Só os estudantes podem abrir uma loja.',
+  storeLocked: 'A loja está em análise. Espera pela resposta para a mudar.',
+  storeIncomplete: 'Falta preencher a descrição ou o logótipo.',
+  noStore: 'Ainda não tens loja. Preenche os dados e guarda.',
+  invalidTransition: 'Esta loja já não pode ser enviada para análise.',
+  invalidPath: 'Não foi possível usar esta imagem. Escolhe outra.',
+  photoRequired: 'Junta pelo menos uma foto.',
+  invalidOrder: 'A ordem das fotos mudou. Atualizámos a lista; tenta outra vez.',
+  categoryNotFound: 'Escolhe uma categoria disponível.',
+  imageFormat: 'Este formato não é aceite. Escolhe uma foto JPG, PNG ou WebP.',
+  uploadFailed: 'Não foi possível enviar a imagem. Verifica a ligação e tenta outra vez.',
+  alreadyDecided:
+    'Esta candidatura já foi decidida por outra pessoa da equipa. Atualizámos o estado.',
+  messageRequired: 'Para recusar, diz à candidata o que deve corrigir.',
+  /** `mb` com vírgula decimal quando não é inteiro (por exemplo 16,3). */
+  imageTooLarge: (mb: number) =>
+    `A imagem tem ${Number.isInteger(mb) ? mb : mb.toFixed(1).replace('.', ',')} MB. Escolhe uma com até 15 MB.`,
 } as const;
 
 const AUTH_BY_CODE: Record<string, string> = {
@@ -53,6 +70,17 @@ const DB_BY_CODE: Record<string, string> = {
   FEATURE_EXISTS: MESSAGES.featureExists,
   INVALID_POSITION: MESSAGES.invalidPosition,
   INVALID_CURSOR: MESSAGES.invalidCursor,
+  NOT_STUDENT: MESSAGES.notStudent,
+  STORE_LOCKED: MESSAGES.storeLocked,
+  STORE_INCOMPLETE: MESSAGES.storeIncomplete,
+  NO_STORE: MESSAGES.noStore,
+  INVALID_TRANSITION: MESSAGES.invalidTransition,
+  INVALID_PATH: MESSAGES.invalidPath,
+  PHOTO_REQUIRED: MESSAGES.photoRequired,
+  INVALID_ORDER: MESSAGES.invalidOrder,
+  CATEGORY_NOT_FOUND: MESSAGES.categoryNotFound,
+  ALREADY_DECIDED: MESSAGES.alreadyDecided,
+  MESSAGE_REQUIRED: MESSAGES.messageRequired,
 };
 
 function lookup(table: Record<string, string>, key: string | undefined): string | undefined {
