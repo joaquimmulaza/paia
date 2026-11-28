@@ -37,6 +37,9 @@ create index store_decisions_admin_id_idx on public.store_decisions (admin_id);
 
 alter table public.store_decisions enable row level security;
 revoke all on public.store_decisions from public, anon, authenticated;
+-- O service_role recebe ALL pelos privilégios por omissão do Supabase: tira-se
+-- tudo e dá-se só ler e acrescentar (o histórico nunca se altera nem apaga).
+revoke all on public.store_decisions from service_role;
 grant select, insert on public.store_decisions to service_role;
 
 -- ---------------------------------------------------------------------------
@@ -149,6 +152,8 @@ revoke execute on function private.require_student() from public, anon, authenti
 -- Cria a loja em draft (se a conta ainda não tem) ou altera-a. Devolve o id.
 -- * Rascunho: só exige nome e categoria; a descrição pode ficar vazia e as
 --   imagens nulas.
+-- * Aprovada: a descrição continua não vazia e o logótipo não nulo
+--   (STORE_INCOMPLETE), como no envio.
 -- * Endereço: em draft e rejected, recalculado quando o endereço-base do nome
 --   novo difere do do nome atual; senão fica o atual. Em approved fica fixo,
 --   para não quebrar ligações partilhadas. pending_approval e
@@ -185,12 +190,20 @@ begin
     raise exception using errcode = 'P0001', message = 'INVALID_TEXT';
   end if;
 
+  -- A garantia do endereço livre conta com READ COMMITTED: depois do trinco,
+  -- cada instrução tira um snapshot novo e vê o endereço gravado por quem o
+  -- largou.
   perform pg_advisory_xact_lock(hashtext('public.stores:slug'));
 
   select s.* into v_store from public.stores s where s.owner_id = v_uid for update;
 
   if found and v_store.status in ('pending_approval', 'suspended') then
     raise exception using errcode = 'P0001', message = 'STORE_LOCKED';
+  end if;
+
+  -- Aprovada, a loja está à vista: não perde o que o envio exigiu.
+  if v_store.status = 'approved' and (v_description = '' or p_logo_path is null) then
+    raise exception using errcode = 'P0001', message = 'STORE_INCOMPLETE';
   end if;
 
   if not exists (
@@ -347,3 +360,258 @@ as $$
 $$;
 revoke execute on function public.get_my_store_decisions() from public, anon, authenticated;
 grant execute on function public.get_my_store_decisions() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. Decisão da administração sobre as candidaturas (A01).
+--    * Todas SECURITY DEFINER, search_path vazio, executáveis só por
+--      authenticated, e começam por verificar private.is_admin()
+--      (NOT_ALLOWED), como as do F1.
+--    * Erros (P0001): NOT_ALLOWED, NOT_FOUND, INVALID_DECISION,
+--      MESSAGE_REQUIRED, INVALID_TEXT, INVALID_CHECKLIST, ALREADY_DECIDED
+--      (com o estado atual em detail) e INVALID_CURSOR. A entrada é validada
+--      antes de qualquer trinco ou escrita.
+--    * A administração vê do dono só o nome, o vínculo e a data de criação
+--      da conta.
+--    * Sem notificações no F2: o vendedor vê a resposta em get_my_store.
+-- ---------------------------------------------------------------------------
+
+-- Aprova ou recusa uma candidatura pendente. Devolve o estado em que fica.
+-- * Só approved e rejected (INVALID_DECISION); suspender e reativar são de
+--   outra fase.
+-- * Mensagem: normalizada com private.normalize_multiline; vazia ou só com
+--   espaços fica nula; até 500 caracteres, sem caracteres de controlo além
+--   de \n (INVALID_TEXT). A recusa exige mensagem (MESSAGE_REQUIRED).
+-- * checklist: objeto com chaves só de name_description, allowed, images e
+--   account, e valores booleanos; pode vir incompleto; nulo vale {}.
+-- * Concorrência: a linha da loja fica FOR UPDATE antes de ler o estado.
+--   Dois admins ao mesmo tempo: o segundo espera, relê a linha já decidida e
+--   recebe ALREADY_DECIDED, sem escrever. Por isso há uma só decisão por
+--   envio. Não há trinco de transação aqui; se um dia houver, é tomado antes
+--   do trinco da linha, como em save_my_store.
+create function public.admin_decide_store(
+  p_store_id uuid,
+  p_decision public.store_decision,
+  p_message text,
+  p_checklist jsonb
+)
+returns public.store_status
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_message text := private.normalize_multiline(p_message);
+  v_checklist jsonb := coalesce(p_checklist, '{}'::jsonb);
+  v_status public.store_status;
+  v_new_status public.store_status;
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  if p_decision is null or p_decision not in ('approved', 'rejected') then
+    raise exception using errcode = 'P0001', message = 'INVALID_DECISION';
+  end if;
+
+  if v_message !~ '[^[:space:]]' then
+    v_message := null;
+  end if;
+  if char_length(v_message) > 500 or translate(v_message, E'\n', '') ~ '[[:cntrl:]]' then
+    raise exception using errcode = 'P0001', message = 'INVALID_TEXT';
+  end if;
+  if p_decision = 'rejected' and v_message is null then
+    raise exception using errcode = 'P0001', message = 'MESSAGE_REQUIRED';
+  end if;
+
+  if jsonb_typeof(v_checklist) <> 'object'
+     or exists (
+       select 1 from jsonb_each(v_checklist) e
+        where e.key not in ('name_description', 'allowed', 'images', 'account')
+           or jsonb_typeof(e.value) <> 'boolean') then
+    raise exception using errcode = 'P0001', message = 'INVALID_CHECKLIST';
+  end if;
+
+  select s.status into v_status from public.stores s where s.id = p_store_id for update;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'NOT_FOUND';
+  end if;
+  if v_status <> 'pending_approval' then
+    raise exception using errcode = 'P0001', message = 'ALREADY_DECIDED', detail = v_status::text;
+  end if;
+
+  v_new_status := p_decision::text::public.store_status;
+
+  update public.stores s
+     set status = v_new_status,
+         decided_at = now(),
+         decided_by = v_uid
+   where s.id = p_store_id;
+
+  insert into public.store_decisions (store_id, admin_id, decision, message, checklist)
+  values (p_store_id, v_uid, p_decision, v_message, v_checklist);
+
+  return v_new_status;
+end;
+$$;
+revoke execute on function public.admin_decide_store(uuid, public.store_decision, text, jsonb) from public, anon, authenticated;
+grant execute on function public.admin_decide_store(uuid, public.store_decision, text, jsonb) to authenticated;
+
+-- Candidaturas num estado, com paginação por cursor.
+-- * pending_approval: (submitted_at, id) asc, a mais antiga primeiro; a
+--   página seguinte é (submitted_at, id) > cursor.
+-- * Outros estados: (decided_at, id) desc, a decisão mais recente primeiro;
+--   a página seguinte é (decided_at, id) < cursor.
+-- * O cursor tem as duas partes ou nenhuma (INVALID_CURSOR). p_limit fica
+--   entre 1 e 50 (20 por omissão), como em search_products.
+create function public.admin_list_store_applications(
+  p_status public.store_status,
+  p_cursor_at timestamptz default null,
+  p_cursor_id uuid default null,
+  p_limit integer default 20
+)
+returns table (
+  id uuid,
+  name text,
+  slug text,
+  category_name text,
+  logo_path text,
+  owner_name text,
+  owner_affiliation public.affiliation,
+  submitted_at timestamptz,
+  decided_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_limit integer := greatest(1, least(coalesce(p_limit, 20), 50));
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  if (p_cursor_at is null) <> (p_cursor_id is null) then
+    raise exception using errcode = 'P0001', message = 'INVALID_CURSOR';
+  end if;
+
+  if p_status = 'pending_approval' then
+    return query
+      select s.id, s.name, s.slug, c.name, s.logo_path, p.full_name, p.affiliation, s.submitted_at, s.decided_at
+        from public.stores s
+        join public.profiles p on p.id = s.owner_id
+        left join public.categories c on c.id = s.category_id
+       where s.status = p_status
+         and (p_cursor_at is null or (s.submitted_at, s.id) > (p_cursor_at, p_cursor_id))
+       order by s.submitted_at asc, s.id asc
+       limit v_limit;
+  else
+    return query
+      select s.id, s.name, s.slug, c.name, s.logo_path, p.full_name, p.affiliation, s.submitted_at, s.decided_at
+        from public.stores s
+        join public.profiles p on p.id = s.owner_id
+        left join public.categories c on c.id = s.category_id
+       where s.status = p_status
+         and (p_cursor_at is null or (s.decided_at, s.id) < (p_cursor_at, p_cursor_id))
+       order by s.decided_at desc, s.id desc
+       limit v_limit;
+  end if;
+end;
+$$;
+revoke execute on function public.admin_list_store_applications(public.store_status, timestamptz, uuid, integer)
+  from public, anon, authenticated;
+grant execute on function public.admin_list_store_applications(public.store_status, timestamptz, uuid, integer)
+  to authenticated;
+
+-- Uma candidatura, em qualquer estado. Zero linhas se a loja não existe.
+create function public.admin_get_store_application(p_store_id uuid)
+returns table (
+  id uuid,
+  name text,
+  slug text,
+  description text,
+  category_name text,
+  logo_path text,
+  cover_path text,
+  status public.store_status,
+  submitted_at timestamptz,
+  owner_name text,
+  owner_affiliation public.affiliation,
+  owner_created_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  return query
+    select s.id, s.name, s.slug, s.description, c.name, s.logo_path, s.cover_path, s.status, s.submitted_at,
+           p.full_name, p.affiliation, p.created_at
+      from public.stores s
+      join public.profiles p on p.id = s.owner_id
+      left join public.categories c on c.id = s.category_id
+     where s.id = p_store_id;
+end;
+$$;
+revoke execute on function public.admin_get_store_application(uuid) from public, anon, authenticated;
+grant execute on function public.admin_get_store_application(uuid) to authenticated;
+
+-- As decisões sobre uma loja, da mais recente para a mais antiga, com o nome
+-- de quem decidiu (só a administração o vê).
+create function public.admin_list_store_decisions(p_store_id uuid)
+returns table (
+  decision public.store_decision,
+  message text,
+  checklist jsonb,
+  admin_name text,
+  created_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  return query
+    select d.decision, d.message, d.checklist, p.full_name, d.created_at
+      from public.store_decisions d
+      left join public.profiles p on p.id = d.admin_id
+     where d.store_id = p_store_id
+     order by d.created_at desc, d.id desc;
+end;
+$$;
+revoke execute on function public.admin_list_store_decisions(uuid) from public, anon, authenticated;
+grant execute on function public.admin_list_store_decisions(uuid) to authenticated;
+
+-- Número de candidaturas à espera de decisão (o contador do painel).
+create function public.admin_count_pending_stores()
+returns integer
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not (select private.is_admin()) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  return (select count(*)::integer from public.stores s where s.status = 'pending_approval');
+end;
+$$;
+revoke execute on function public.admin_count_pending_stores() from public, anon, authenticated;
+grant execute on function public.admin_count_pending_stores() to authenticated;

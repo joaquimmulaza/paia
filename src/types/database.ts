@@ -241,7 +241,28 @@ isOneToOne: true
             [_ in never]: never
           }
           Functions: {
-            "admin_list_store_features":
+            "admin_count_pending_stores":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
+"admin_decide_store":
+{ Args: { "p_checklist": Json,"p_decision": Database["public"]['Enums']["store_decision"],"p_message": string,"p_store_id": string }; Returns: Database["public"]['Enums']["store_status"]
+                           },
+"admin_get_store_application":
+{ Args: { "p_store_id": string }; Returns: {
+              "category_name": string,"cover_path": string,"description": string,"id": string,"logo_path": string,"name": string,"owner_affiliation": Database["public"]['Enums']["affiliation"],"owner_created_at": string,"owner_name": string,"slug": string,"status": Database["public"]['Enums']["store_status"],"submitted_at": string
+            }[]
+                           },
+"admin_list_store_applications":
+{ Args: { "p_cursor_at"?: string,"p_cursor_id"?: string,"p_limit"?: number,"p_status": Database["public"]['Enums']["store_status"] }; Returns: {
+              "category_name": string,"decided_at": string,"id": string,"logo_path": string,"name": string,"owner_affiliation": Database["public"]['Enums']["affiliation"],"owner_name": string,"slug": string,"submitted_at": string
+            }[]
+                           },
+"admin_list_store_decisions":
+{ Args: { "p_store_id": string }; Returns: {
+              "admin_name": string,"checklist": Json,"created_at": string,"decision": Database["public"]['Enums']["store_decision"],"message": string
+            }[]
+                           },
+"admin_list_store_features":
 { Args: Record<PropertyKey, never>; Returns: {
               "ends_at": string,"id": string,"is_active": boolean,"is_live": boolean,"note": string,"position": number,"source": Database["public"]['Enums']["feature_source"],"starts_at": string,"store_id": string,"store_name": string,"store_slug": string,"store_status": Database["public"]['Enums']["store_status"]
             }[]
