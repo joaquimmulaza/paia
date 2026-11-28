@@ -88,7 +88,8 @@ Os hashes são os de `main`; o branch `f1-catalogo` tem os mesmos commits com ou
 | 5. Candidatura de loja (V01–V03, K03c)                          | `10dfe3e`, `593934c`             |
 | 6. Painel da loja e gestão de produtos (V04b–V06b)              | `a3f97d2`, `a01865d`, `3ea4771`  |
 | 7. Candidaturas na administração (A01)                          | `b302cad`, `a700601`, `a46b584`  |
-| 8. Ponta a ponta, seed, acessibilidade, README e verificação    | `test(f2): ponta a ponta do vendedor, axe e documentação` (ver `git log`) |
+| 8. Ponta a ponta, seed, acessibilidade, README e verificação    | `ca04441`                        |
+| Revisão final (code-review high + security-review) e correções  | `ecfb45c`, `89bf9ec`             |
 
 Rotas novas: `/vender`, `/vender/pedido`, `/vender/estado`, `/vender/pedido/ver`, `/vender/loja`, `/vender/loja/editar`, `/vender/produtos`, `/vender/produtos/novo`, `/vender/produtos/:id` e `/admin/candidaturas`. Migração nova: `supabase/migrations/20261128000000_f2_vender.sql`. O `seed.sql` ganhou uma estudante sem loja (`sara@exemplo.test`) e o logótipo (um caminho, sem ficheiro) da loja pendente.
 
@@ -97,6 +98,8 @@ Pontos do F1 que o F2 resolveu:
 - a política SELECT do dono em `stores` foi decidida explicitamente (o dono vê a sua loja e os seus produtos; o catálogo público não lhe mostra os ocultos por engano);
 - a cache é limpa quando o utilizador muda (`queryClient.clear()`);
 - o carregamento de fotos está feito: políticas de escrita no Storage por caminho da loja e compressão no cliente com `browser-image-compression`.
+
+Última verificação completa (em `89bf9ec`): `npm run verify` com os 10 passos a passar, duas vezes seguidas: 694 testes Vitest, 569 pgTAP e 14 ponta a ponta, com axe sem violações. A revisão final do branch deu «pronto para merge» depois das correções.
 
 Testes estabilizados: os `findBy`/`waitFor` do Testing Library esperam até 10 s (`configure({ asyncUtilTimeout: 10_000 })` em `tests/setup.ts`) em vez de 1 s, porque a suite inteira em paralelo ultrapassava o segundo em `FeaturesPage`, `routes` («terminar sessão») e `session-cache`. O limite de cada teste ponta a ponta passou de 30 s para 60 s, e o axe espera que os avisos (sonner) saiam do ecrã.
 
@@ -146,6 +149,24 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 - Ruling: o contador da nota (280 caracteres) normaliza como a base, mas é mais estrito se houver espaços Unicode raros.
 - Ruling: o cliente faz `removeQueries(['me'])` quando o utilizador muda, e as chaves da administração incluem o id do utilizador.
 
+### F2 · Vender
+
+- Ruling: `submit_my_store()` sem parâmetro (o desenho técnico tinha `submit_store(store_id)`) — uma loja por conta torna o id redundante — custo: renomear uma RPC.
+- Ruling: sem notificações no F2; `admin_decide_store` passa a escrevê-las no F3 — custo: acrescentar o insert no F3.
+- Ruling: o endereço da loja só é recalculado quando a base do nome muda; a ordem dos bloqueios é sempre advisory lock → linha da loja — custo: deadlock se uma função futura a inverter.
+- Ruling: a categoria de uma loja ou de um produto tem de estar visível, exceto a que já tem — custo: uma regra a mais.
+- Ruling: `store_decisions` só aceita SELECT e INSERT, também para `service_role` (só acrescenta) — custo: nenhum.
+- Ruling: `admin_decide_store` recebe `p_expected_submitted_at` (protege contra ecrãs desatualizados), recusa a própria loja e guarda o UPDATE pelo estado; o A01 envia o envio que o admin analisou, não o da última leitura — custo: nenhum.
+- Ruling: os triggers de fotos, caminhos e categorias ignoram `postgres`, `supabase_admin` e `service_role` (o seed e os testes do F1 inserem produtos publicados sem fotos); `authenticated` é sempre verificado. Uma função SECURITY DEFINER futura que escreva produtos tem de voltar a verificar estas regras (há um comentário na migração) — custo: SQL feito como `postgres` pode criar produtos publicados sem foto.
+- Ruling: as funções públicas do catálogo (`search_products`, `get_product`, `get_store`) filtram com `is_listed_product`, para o dono não ver os seus produtos ocultos no catálogo — custo: uma pesquisa por linha (aceitável à escala do campus).
+- Ruling: `media_select_owner` e `media_delete_owner` usam `can_delete_media` (só o dono da loja, em draft, rejected ou approved); apagar um produto apaga também os ficheiros das fotos — custo: uma loja suspensa não limpa ficheiros até ao F4.
+- Ruling: `listMyProducts`, `getMyProduct` e `countMyProducts` filtram por `store_id`; 0 linhas afetadas em `updateProduct`/`deleteProduct` dá `notAllowed` — custo: mensagem genérica.
+- Ruling: a loja suspensa mostra só «A tua loja está suspensa. Fala com a equipa do PAIÁ.» — o F4 desenha o resto — custo: texto a rever no F4.
+- Ruling: as fotos de um produto novo esperam no telemóvel até haver nome, preço e stock válidos e sobem ao guardar — custo: sair sem guardar perde-as.
+- Ruling: o A01 mostra até 50 candidaturas por separador, sem «Carregar mais», e o histórico tem só a submissão atual — custo: paginação e uma tabela de eventos se o piloto crescer.
+- Ruling: `asyncUtilTimeout` de 10 s no Testing Library e 60 s por teste no Playwright, para a suite não falhar sob carga — custo: uma falha real demora mais a aparecer.
+- Ruling: a compressão de imagens corre sem web worker (`useWebWorker: false`), para não descarregar código de um CDN externo — custo: a compressão bloqueia um pouco a interface em fotos grandes.
+
 ## Pontos adiados
 
 ### Resolvidos no F2 (as linhas da secção «Para o F2» abaixo são as antigas)
@@ -160,6 +181,12 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 - A cache de mutações não é limpa quando o utilizador muda (necessário quando houver mutações do utilizador).
 - O carregamento de fotografias (políticas de escrita do Storage, `browser-image-compression`) tem de estar pronto antes do lançamento público.
 - A ligação entre `kind` e `*_option_id` nos dados académicos não é imposta; não há histórico de quem deu o papel de administrador.
+
+### Do F2, para mais tarde
+
+- Verificar à mão no Safari/iOS: o canvas do Safari pode não gerar WebP; só depois disso o bucket pode passar a aceitar só `image/webp`.
+- Ficheiros órfãos no Storage (Trocar/Remover imagem, envios interrompidos, uploads sem limite por produto): rever à mão no piloto e criar uma limpeza.
+- Menores registados na revisão final e sem urgência: regex do caminho de `product_images` mais solta do que a do Storage; `updated_at` dos produtos legível por `authenticated`; corrida rara entre juntar uma foto e reordenar (erro genérico); foco de «Tentar outra vez» no envio de imagens; navegação inferior no V05 que o canvas não tem; texto de categoria vazia por confirmar; testes em falta (duplo clique, edição de loja recusada, TOKEN_REFRESHED).
 
 ### Para o F3 (Pedidos)
 
@@ -187,6 +214,7 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 - **Datas «Hoje/Ontem» ou absolutas:** o V03 e o A01 do canvas mostram «Hoje/Ontem»; o código mostra datas absolutas (`formatDateTime`), como no F1. Decidir junto com o formato de datas abaixo.
 - **Ordem dos separadores no A01:** o A01 e o A01b do canvas têm ordens diferentes. Está implementado «Por analisar / Recusadas / Aprovadas», como no A01b. Confirmar.
 - **Checklist de aprovação:** a lista de 4 itens do A01 é uma proposta do desenho, só informativa (não impede aprovar). Confirmar os itens e se deve ser obrigatória.
+- **Textos novos do F2:** a folha «X02 · Textos novos do F2» no canvas (página Lote 3) lista todos os microtextos que a implementação acrescentou. Rever e mudar no canvas o que quiseres.
 - **Supabase remoto:** a migração `20261128000000_f2_vender.sql` **não** foi aplicada no remoto. Precisa de autorização explícita (`supabase db push`), depois do merge. O seed nunca vai para o remoto.
 
 ### Anteriores
