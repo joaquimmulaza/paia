@@ -9,3 +9,6 @@ test-results
 .superpowers/
 *.tsbuildinfo
 .vercel
+
+# Worktrees locais dos agentes
+.worktrees/
