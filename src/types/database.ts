@@ -245,7 +245,7 @@ isOneToOne: true
 { Args: Record<PropertyKey, never>; Returns: number
                            },
 "admin_decide_store":
-{ Args: { "p_checklist": Json,"p_decision": Database["public"]['Enums']["store_decision"],"p_message": string,"p_store_id": string }; Returns: Database["public"]['Enums']["store_status"]
+{ Args: { "p_checklist": Json,"p_decision": Database["public"]['Enums']["store_decision"],"p_expected_submitted_at": string,"p_message": string,"p_store_id": string }; Returns: Database["public"]['Enums']["store_status"]
                            },
 "admin_get_store_application":
 { Args: { "p_store_id": string }; Returns: {

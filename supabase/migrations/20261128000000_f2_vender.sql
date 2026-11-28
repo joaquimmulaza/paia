@@ -368,7 +368,7 @@ grant execute on function public.get_my_store_decisions() to authenticated;
 --      (NOT_ALLOWED), como as do F1.
 --    * Erros (P0001): NOT_ALLOWED, NOT_FOUND, INVALID_DECISION,
 --      MESSAGE_REQUIRED, INVALID_TEXT, INVALID_CHECKLIST, ALREADY_DECIDED
---      (com o estado atual em detail) e INVALID_CURSOR. A entrada é validada
+--      (com o estado atual em detail), INVALID_STATUS e INVALID_CURSOR. A entrada é validada
 --      antes de qualquer trinco ou escrita.
 --    * A administração vê do dono só o nome, o vínculo e a data de criação
 --      da conta.
@@ -388,11 +388,19 @@ grant execute on function public.get_my_store_decisions() to authenticated;
 --   recebe ALREADY_DECIDED, sem escrever. Por isso há uma só decisão por
 --   envio. Não há trinco de transação aqui; se um dia houver, é tomado antes
 --   do trinco da linha, como em save_my_store.
+-- * Ecrã desatualizado: p_expected_submitted_at é o submitted_at que o A01
+--   mostrou. Se a loja foi entretanto decidida e reenviada, o submitted_at
+--   da linha já é outro e a decisão dá ALREADY_DECIDED (detail = estado
+--   atual), como se outra pessoa da equipa tivesse decidido.
+-- * Um admin não decide a sua própria loja (NOT_ALLOWED).
+-- * Defesa em profundidade: o UPDATE só toca numa linha ainda em
+--   pending_approval; se não tocar em nenhuma, dá ALREADY_DECIDED.
 create function public.admin_decide_store(
   p_store_id uuid,
   p_decision public.store_decision,
   p_message text,
-  p_checklist jsonb
+  p_checklist jsonb,
+  p_expected_submitted_at timestamptz
 )
 returns public.store_status
 language plpgsql
@@ -404,7 +412,10 @@ declare
   v_message text := private.normalize_multiline(p_message);
   v_checklist jsonb := coalesce(p_checklist, '{}'::jsonb);
   v_status public.store_status;
+  v_submitted_at timestamptz;
+  v_owner_id uuid;
   v_new_status public.store_status;
+  v_rows integer;
 begin
   if not (select private.is_admin()) then
     raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
@@ -432,11 +443,17 @@ begin
     raise exception using errcode = 'P0001', message = 'INVALID_CHECKLIST';
   end if;
 
-  select s.status into v_status from public.stores s where s.id = p_store_id for update;
+  select s.status, s.submitted_at, s.owner_id into v_status, v_submitted_at, v_owner_id
+    from public.stores s
+   where s.id = p_store_id
+     for update;
   if not found then
     raise exception using errcode = 'P0001', message = 'NOT_FOUND';
   end if;
-  if v_status <> 'pending_approval' then
+  if v_owner_id = v_uid then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+  if v_status <> 'pending_approval' or v_submitted_at is distinct from p_expected_submitted_at then
     raise exception using errcode = 'P0001', message = 'ALREADY_DECIDED', detail = v_status::text;
   end if;
 
@@ -446,7 +463,11 @@ begin
      set status = v_new_status,
          decided_at = now(),
          decided_by = v_uid
-   where s.id = p_store_id;
+   where s.id = p_store_id and s.status = 'pending_approval';
+  get diagnostics v_rows = row_count;
+  if v_rows = 0 then
+    raise exception using errcode = 'P0001', message = 'ALREADY_DECIDED', detail = v_status::text;
+  end if;
 
   insert into public.store_decisions (store_id, admin_id, decision, message, checklist)
   values (p_store_id, v_uid, p_decision, v_message, v_checklist);
@@ -454,14 +475,16 @@ begin
   return v_new_status;
 end;
 $$;
-revoke execute on function public.admin_decide_store(uuid, public.store_decision, text, jsonb) from public, anon, authenticated;
-grant execute on function public.admin_decide_store(uuid, public.store_decision, text, jsonb) to authenticated;
+revoke execute on function public.admin_decide_store(uuid, public.store_decision, text, jsonb, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.admin_decide_store(uuid, public.store_decision, text, jsonb, timestamptz) to authenticated;
 
 -- Candidaturas num estado, com paginação por cursor.
 -- * pending_approval: (submitted_at, id) asc, a mais antiga primeiro; a
 --   página seguinte é (submitted_at, id) > cursor.
 -- * Outros estados: (decided_at, id) desc, a decisão mais recente primeiro;
 --   a página seguinte é (decided_at, id) < cursor.
+-- * draft não é candidatura: dá INVALID_STATUS.
 -- * O cursor tem as duas partes ou nenhuma (INVALID_CURSOR). p_limit fica
 --   entre 1 e 50 (20 por omissão), como em search_products.
 create function public.admin_list_store_applications(
@@ -492,6 +515,10 @@ declare
 begin
   if not (select private.is_admin()) then
     raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  if p_status = 'draft' then
+    raise exception using errcode = 'P0001', message = 'INVALID_STATUS';
   end if;
 
   if (p_cursor_at is null) <> (p_cursor_id is null) then

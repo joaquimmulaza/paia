@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(116);
+select plan(126);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -410,11 +410,15 @@ set local role anon;
 select throws_ok($$ select public.save_my_store('Loja', '', null, null, null) $$, '42501', null, '(h) anon não chama save_my_store');
 select throws_ok($$ select public.submit_my_store() $$, '42501', null, '(h) anon não chama submit_my_store');
 select throws_ok($$ select * from public.get_my_store() $$, '42501', null, '(h) anon não chama get_my_store');
-select throws_ok($$ select public.admin_decide_store(gen_random_uuid(), 'approved', null, '{}') $$,
+select throws_ok($$ select public.admin_decide_store(gen_random_uuid(), 'approved', null, '{}', now()) $$,
   '42501', null, '(h) anon não chama admin_decide_store');
 select throws_ok($$ select * from public.admin_list_store_applications('pending_approval') $$,
   '42501', null, '(h) anon não chama admin_list_store_applications');
 select throws_ok($$ select public.admin_count_pending_stores() $$, '42501', null, '(h) anon não chama admin_count_pending_stores');
+select throws_ok($$ select * from public.admin_get_store_application(gen_random_uuid()) $$,
+  '42501', null, '(h) anon não chama admin_get_store_application');
+select throws_ok($$ select * from public.admin_list_store_decisions(gen_random_uuid()) $$,
+  '42501', null, '(h) anon não chama admin_list_store_decisions');
 reset role;
 
 -- ===========================================================================
@@ -445,6 +449,15 @@ as $$
 $$;
 grant execute on function pg_temp.sid(uuid) to authenticated, anon;
 
+-- O submitted_at que o A01 mostra (lido como admin).
+create function pg_temp.sub_at(p_store uuid)
+returns timestamptz
+language sql
+as $$
+  select submitted_at from public.admin_get_store_application(p_store);
+$$;
+grant execute on function pg_temp.sub_at(uuid) to authenticated;
+
 -- Quatro candidaturas: 1, 2 e 3 enviadas há 3, 2 e 1 horas; a 8 enviada
 -- agora (em (e)).
 insert into t_store select owner_id, id from public.stores where owner_id = '20000000-0000-0000-0000-000000000003';
@@ -461,7 +474,7 @@ update public.stores s
 set local role authenticated;
 select pg_temp.as_user('20000000-0000-0000-0000-000000000008');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'approved', null, '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000008')),
+  format($$ select public.admin_decide_store(%L, 'approved', null, '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000008')),
   'P0001', 'NOT_ALLOWED', '(i) um não-admin não decide');
 select throws_ok($$ select * from public.admin_list_store_applications('pending_approval') $$,
   'P0001', 'NOT_ALLOWED', '(i) um não-admin não lista candidaturas');
@@ -518,39 +531,42 @@ select is((select count(*)::int from public.admin_get_store_application(gen_rand
 
 -- Erros de admin_decide_store (validados antes de qualquer escrita).
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'suspended', 'Não', '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'suspended', 'Não', '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_DECISION', '(i) suspender por aqui dá INVALID_DECISION');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, null, null, '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, null, null, '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_DECISION', '(i) uma decisão nula dá INVALID_DECISION');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'approved', repeat('a', 501), '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'approved', repeat('a', 501), '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_TEXT', '(i) uma mensagem com 501 caracteres dá INVALID_TEXT');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'approved', 'a' || chr(7), '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'approved', 'a' || chr(7), '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_TEXT', '(i) uma mensagem com um caracter de controlo dá INVALID_TEXT');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'rejected', null, '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'rejected', null, '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'MESSAGE_REQUIRED', '(i) recusar sem mensagem dá MESSAGE_REQUIRED');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'rejected', E' \n\t ', '{}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'rejected', E' \n\t ', '{}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'MESSAGE_REQUIRED', '(i) recusar com uma mensagem só de espaços dá MESSAGE_REQUIRED');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'approved', null, '{"foo": true}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'approved', null, '{"foo": true}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_CHECKLIST', '(i) uma chave estranha no checklist dá INVALID_CHECKLIST');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'approved', null, '{"allowed": "sim"}') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'approved', null, '{"allowed": "sim"}', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_CHECKLIST', '(i) um valor não booleano no checklist dá INVALID_CHECKLIST');
 select throws_ok(
-  format($$ select public.admin_decide_store(%L, 'approved', null, '[]') $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  format($$ select public.admin_decide_store(%L, 'approved', null, '[]', now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   'P0001', 'INVALID_CHECKLIST', '(i) um checklist que não é objeto dá INVALID_CHECKLIST');
-select throws_ok($$ select public.admin_decide_store(gen_random_uuid(), 'approved', null, '{}') $$,
+select throws_ok(
+  format($$ select public.admin_decide_store(%L, 'approved', null, 'null'::jsonb, now()) $$, pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  'P0001', 'INVALID_CHECKLIST', '(i) um checklist JSON null dá INVALID_CHECKLIST');
+select throws_ok($$ select public.admin_decide_store(gen_random_uuid(), 'approved', null, '{}', now()) $$,
   'P0001', 'NOT_FOUND', '(i) uma loja que não existe dá NOT_FOUND');
 
 -- Aprovar.
 select is(
   public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'approved', null,
-                            '{"name_description": true, "allowed": true}'),
+                            '{"name_description": true, "allowed": true}', pg_temp.sub_at(pg_temp.sid('20000000-0000-0000-0000-000000000001'))),
   'approved'::public.store_status, '(i) aprovar devolve approved');
 reset role;
 
@@ -569,8 +585,8 @@ select results_eq(
 set local role authenticated;
 select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
 select is(
-  pg_temp.err_of(format($$ select public.admin_decide_store(%L, 'rejected', 'Mudei de ideias', '{}') $$,
-                        pg_temp.sid('20000000-0000-0000-0000-000000000001'))),
+  pg_temp.err_of(format($$ select public.admin_decide_store(%L, 'rejected', 'Mudei de ideias', '{}', pg_temp.sub_at(%L)) $$,
+                        pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.sid('20000000-0000-0000-0000-000000000001'))),
   'ALREADY_DECIDED / approved', '(i) decidir outra vez dá ALREADY_DECIDED com o estado atual no detail');
 reset role;
 select is((select count(*)::int from public.store_decisions where store_id = pg_temp.sid('20000000-0000-0000-0000-000000000001')), 1,
@@ -585,7 +601,7 @@ set local role authenticated;
 select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
 select is(
   public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000008'), 'rejected', E'  Falta a foto   da capa \n\n\n ',
-                            '{"images": false}'),
+                            '{"images": false}', pg_temp.sub_at(pg_temp.sid('20000000-0000-0000-0000-000000000008'))),
   'rejected'::public.store_status, '(i) recusar com mensagem devolve rejected');
 select pg_temp.as_user('20000000-0000-0000-0000-000000000008');
 select is((select last_message from public.get_my_store()), 'Falta a foto da capa',
@@ -596,8 +612,29 @@ select ok(
   exists (select 1 from public.admin_list_store_applications('pending_approval')
            where id = pg_temp.sid('20000000-0000-0000-0000-000000000008')),
   '(i) reenviada, volta a aparecer nas pendentes');
+reset role;
+
+-- Ecrã desatualizado: o admin abriu o envio anterior e a loja foi reenviada
+-- depois. Dentro desta transação now() não muda, por isso o reenvio é
+-- empurrado 1 segundo para ter um submitted_at diferente.
+create temp table t_old_sub as select submitted_at from public.stores where owner_id = '20000000-0000-0000-0000-000000000008';
+grant select on t_old_sub to authenticated;
+update public.stores set submitted_at = submitted_at + interval '1 second'
+ where owner_id = '20000000-0000-0000-0000-000000000008';
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
 select is(
-  public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000008'), 'rejected', 'Terceira mensagem', null),
+  pg_temp.err_of(format($$ select public.admin_decide_store(%L, 'approved', null, '{}', %L) $$,
+                        pg_temp.sid('20000000-0000-0000-0000-000000000008'), (select submitted_at from t_old_sub))),
+  'ALREADY_DECIDED / pending_approval', '(i) decidir com o submitted_at de um envio anterior dá ALREADY_DECIDED');
+reset role;
+select is((select count(*)::int from public.store_decisions where store_id = pg_temp.sid('20000000-0000-0000-0000-000000000008')), 2,
+  '(i) a decisão desatualizada não escreve nenhuma linha');
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
+select is(
+  public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000008'), 'rejected', 'Terceira mensagem', null,
+                            pg_temp.sub_at(pg_temp.sid('20000000-0000-0000-0000-000000000008'))),
   'rejected'::public.store_status, '(i) recusar outra vez devolve rejected');
 select pg_temp.as_user('20000000-0000-0000-0000-000000000008');
 select is((select last_message from public.get_my_store()), 'Terceira mensagem',
@@ -621,12 +658,18 @@ select ok(
     select 1 from pg_proc p, unnest(p.proargnames) as a (name)
      where p.oid = 'public.get_my_store_decisions'::regproc and a.name in ('admin_id', 'admin_name', 'decided_by')),
   '(i) get_my_store_decisions não tem coluna de admin');
+select ok(
+  not exists (
+    select 1 from pg_proc p, unnest(p.proargnames) as a (name)
+     where p.oid in ('public.admin_list_store_applications'::regproc, 'public.admin_get_store_application'::regproc)
+       and (a.name like '%email%' or a.name like '%phone%')),
+  '(i) as funções da administração não expõem email nem telefone do dono');
 
 -- Lista das decididas: (decided_at, id) desc, com cursor.
 set local role authenticated;
 select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
-select public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000002'), 'approved', 'Bem-vinda', '{}');
-select public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000003'), 'approved', null, '{}');
+select public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000002'), 'approved', 'Bem-vinda', '{}', pg_temp.sub_at(pg_temp.sid('20000000-0000-0000-0000-000000000002')));
+select public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000003'), 'approved', null, '{}', pg_temp.sub_at(pg_temp.sid('20000000-0000-0000-0000-000000000003')));
 reset role;
 update public.stores s
    set decided_at = now() - (v.minutes || ' minutes')::interval
@@ -655,6 +698,35 @@ select results_eq(
   $$ select pg_temp.sid('20000000-0000-0000-0000-000000000008') $$,
   '(i) a recusada aparece nas recusadas');
 select is(public.admin_count_pending_stores(), 0, '(i) depois das decisões não há pendentes');
+select throws_ok($$ select * from public.admin_list_store_applications('draft') $$,
+  'P0001', 'INVALID_STATUS', '(i) listar rascunhos dá INVALID_STATUS');
+reset role;
+
+-- Um admin não decide a sua própria loja.
+insert into public.stores (owner_id, name, slug, category_id, description, status, submitted_at)
+values ('20000000-0000-0000-0000-000000000009', 'Loja do Admin', 'loja-do-admin', pg_temp.cat('outros'), 'Coisas',
+        'pending_approval', now() - interval '4 hours');
+insert into t_store select owner_id, id from public.stores where owner_id = '20000000-0000-0000-0000-000000000009';
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
+select throws_ok(
+  format($$ select public.admin_decide_store(%L, 'approved', null, '{}', pg_temp.sub_at(%L)) $$, pg_temp.sid('20000000-0000-0000-0000-000000000009'), pg_temp.sid('20000000-0000-0000-0000-000000000009')),
+  'P0001', 'NOT_ALLOWED', '(i) um admin não decide a sua própria loja');
+reset role;
+select is((pg_temp.store_of('20000000-0000-0000-0000-000000000009')).status, 'pending_approval'::public.store_status,
+  '(i) a própria loja do admin continua pendente');
+
+-- p_limit acima de 50 fica em 50: 51 candidaturas novas, mais a do admin.
+select pg_temp.signup(('30000000-0000-0000-0000-' || lpad(g::text, 12, '0'))::uuid, 'lote' || g || '@exemplo.test', 'student')
+  from generate_series(1, 51) as g;
+insert into public.stores (owner_id, name, slug, category_id, status, submitted_at)
+select ('30000000-0000-0000-0000-' || lpad(g::text, 12, '0'))::uuid, 'Lote ' || g, 'lote-' || g, pg_temp.cat('outros'),
+       'pending_approval', now()
+  from generate_series(1, 51) as g;
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
+select is((select count(*)::int from public.admin_list_store_applications('pending_approval', p_limit => 100)), 50,
+  '(i) p_limit 100 com 52 pendentes dá 50 linhas');
 reset role;
 
 select * from finish();
