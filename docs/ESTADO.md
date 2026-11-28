@@ -2,7 +2,7 @@
 
 > **Este ficheiro é a memória comum entre agentes** (Cursor, Antigravity, Claude Code). Cada agente atualiza-o **no fim de cada tarefa, no mesmo commit da tarefa**, como descreve o [`AGENTS.md`](../AGENTS.md). Não reescrevas linhas antigas: se uma decisão mudar, acrescenta uma linha nova que a substitui.
 >
-> **Última atualização:** 2026-11-27, com `main` em `f7c4cf4` (F1 junto, com os estados do A07 desenhados).
+> **Última atualização:** 2026-11-28, com `main` em `9824ed8` e F0+F1 online em https://paia-dun.vercel.app.
 
 ## Agora
 
@@ -12,6 +12,17 @@
 - **Branches:**
   - `main` tem F0 e F1;
   - `f0-fundacao` e `f1-catalogo` estão já juntos em `main` e não se escreve mais neles.
+
+## Online (produção)
+
+- **Site:** https://paia-dun.vercel.app (Vercel, projeto `paia`, equipa `joaquim-mulazas-projects`). Deploy de produção a partir de `main` (`9824ed8`), feito pela API da Vercel; o repositório ainda não está ligado à Vercel por Git, por isso um push para `main` **não** faz deploy sozinho.
+- **Variáveis na Vercel:** `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública anon), em production e preview. Nenhuma chave secreta.
+- **`vercel.json`:** Vite, `npm run build`, `dist`, e rewrite de todas as rotas para `index.html` (SPA).
+- **Supabase remoto `paia` (`pkubomgkptdwlewgocqm`):** F0 e F1 aplicados em 2026-11-27 pelo MCP do Supabase, **sem o seed** (só as 8 categorias da migração). O catálogo online está vazio até F2.
+  - Atenção: o histórico remoto tem as versões `20261127171240_f0_base`, `20261127171510_f1_catalogo` e `20261127171534_f1_fix_unicode`, não as dos ficheiros (`20261125000000`, `20261126000000`). Antes de usar `supabase db push`, alinhar o histórico com `supabase migration repair` (ação remota: pede autorização).
+  - `f1_fix_unicode` só repõe os caracteres Unicode de `normalize_text` e `normalize_multiline` (construídos com `chr()`), que o transporte tinha trocado por espaços. Depois disso, o código das 23 funções, as políticas, os grants por coluna, as colunas e as categorias são iguais ao local (comparado por md5). A única diferença: o remoto dá também EXECUTE ao `service_role` nas funções `public` (predefinição do Supabase).
+  - Avisos de segurança do Supabase: só os esperados (tabelas fechadas sem políticas, `admin_users` e `store_features`; funções SECURITY DEFINER que verificam `is_admin` ou só devolvem colunas públicas).
+- **Por fazer no painel do Supabase (pelo responsável):** Authentication → URL Configuration: Site URL `https://paia-dun.vercel.app` e Redirect URLs com esse endereço; decidir a confirmação de email (ver abaixo); promover o primeiro administrador.
 
 ## Fases
 
