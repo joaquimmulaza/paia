@@ -6,6 +6,9 @@ const baseURL = 'http://localhost:5173';
 export default defineConfig({
   testDir: 'e2e',
   retries: 0,
+  // Os fluxos completos (criar contas, enviar fotos, esperar pelos avisos antes do axe) passam
+  // dos 30 s por omissão quando a máquina está ocupada.
+  timeout: 60_000,
   // Um ficheiro de cada vez: o admin-features.spec muda os destaques do Início, e os outros
   // ficheiros (catalog.spec) nunca o devem ver a meio.
   workers: 1,

@@ -2,15 +2,16 @@
 
 > **Este ficheiro é a memória comum entre agentes** (Cursor, Antigravity, Claude Code). Cada agente atualiza-o **no fim de cada tarefa, no mesmo commit da tarefa**, como descreve o [`AGENTS.md`](../AGENTS.md). Não reescrevas linhas antigas: se uma decisão mudar, acrescenta uma linha nova que a substitui.
 >
-> **Última atualização:** 2026-11-28, com `main` em `9824ed8` e F0+F1 online em https://paia-ugs.vercel.app.
+> **Última atualização:** 2026-11-28, com o F2 · Vender feito e em revisão no branch `f2-vender` (ainda não está em `main`). `main` continua em `9824ed8`, com F0+F1 online em https://paia-ugs.vercel.app.
 
 ## Agora
 
-- **Fase atual:** F2 · Vender, com desenho aprovado (`docs/superpowers/specs/2026-11-28-f2-vender-design.md`) e plano escrito. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
-- **Tarefa seguinte:** o responsável aprovou o desenho do F2 em 2026-11-28. O plano está em `docs/superpowers/plans/2026-11-28-f2-vender.md`, com 8 tarefas. Falta o responsável rever o plano e escolher a forma de execução. Depois cria-se o branch `f2-vender` a partir de `main` e começa-se pela Task 1.
+- **Fase atual:** F2 · Vender, **em revisão** no branch `f2-vender`: as 8 tarefas estão feitas (ver abaixo). Falta a revisão final do branch (`code-review` nível `high` e `security-review`), uma vaga de correções e a decisão do responsável sobre o merge. Desenho aprovado (`docs/superpowers/specs/2026-11-28-f2-vender-design.md`) e plano escrito. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
+- **Tarefa seguinte:** revisão final do branch `f2-vender` contra `main`, uma vaga de correções e `npm run verify`. Depois, e só com autorização explícita do responsável, o merge em `main` e a aplicação da migração `20261128000000_f2_vender.sql` no Supabase remoto (**o remoto ainda não a recebeu**; está em F0+F1). O plano está em `docs/superpowers/plans/2026-11-28-f2-vender.md`.
 - **Trabalho a meio:** nenhum.
 - **Branches:**
   - `main` tem F0 e F1;
+  - `f2-vender` tem o F2 completo, em revisão, sem push nem merge;
   - `f0-fundacao` e `f1-catalogo` estão já juntos em `main` e não se escreve mais neles.
 
 ## Online (produção)
@@ -33,7 +34,7 @@
 | -------------------- | -------------- | ----------------------------------------------------------- |
 | F0 · Fundação        | Feita, em main | `docs/superpowers/plans/2026-11-25-f0-fundacao.md`          |
 | F1 · Catálogo        | Feita, em main | `docs/superpowers/plans/2026-11-26-f1-catalogo.md`          |
-| F2 · Vender          | Planeado       | `docs/superpowers/plans/2026-11-28-f2-vender.md`            |
+| F2 · Vender          | Em revisão (`f2-vender`) | `docs/superpowers/plans/2026-11-28-f2-vender.md`            |
 | F3 · Pedidos         | Por planear    | —                                                           |
 | F4 · Confiança       | Por planear    | —                                                           |
 | F5 · PWA e piloto    | Por planear    | —                                                           |
@@ -75,6 +76,29 @@ Os hashes são os de `main`; o branch `f1-catalogo` tem os mesmos commits com ou
 | Estados, avisos e ligação «Administração» desenhados (A07b, A07c, K03b) e alinhados | `f7c4cf4` |
 
 Última verificação completa: `npm run verify` com os 10 passos a passar: 476 testes Vitest, 344 pgTAP e 13 ponta a ponta, com axe sem violações.
+
+### F2 · Vender (branch `f2-vender`, em revisão)
+
+| Tarefa                                                          | Commits                          |
+| --------------------------------------------------------------- | -------------------------------- |
+| 1. Loja do vendedor no servidor (endereço, rascunho, envio)     | `270fa03`, `eb42477`             |
+| 2. Decisão das candidaturas pela administração                  | `384c006`, `52bba0a`             |
+| 3. Produtos, fotos e Storage do vendedor                        | `b980216`, `68dba36`, `800cc00`  |
+| 4. Camada de dados do vendedor                                  | `1de78b1`                        |
+| 5. Candidatura de loja (V01–V03, K03c)                          | `10dfe3e`, `593934c`             |
+| 6. Painel da loja e gestão de produtos (V04b–V06b)              | `a3f97d2`, `a01865d`, `3ea4771`  |
+| 7. Candidaturas na administração (A01)                          | `b302cad`, `a700601`, `a46b584`  |
+| 8. Ponta a ponta, seed, acessibilidade, README e verificação    | `test(f2): ponta a ponta do vendedor, axe e documentação` (ver `git log`) |
+
+Rotas novas: `/vender`, `/vender/pedido`, `/vender/estado`, `/vender/pedido/ver`, `/vender/loja`, `/vender/loja/editar`, `/vender/produtos`, `/vender/produtos/novo`, `/vender/produtos/:id` e `/admin/candidaturas`. Migração nova: `supabase/migrations/20261128000000_f2_vender.sql`. O `seed.sql` ganhou uma estudante sem loja (`sara@exemplo.test`) e o logótipo (um caminho, sem ficheiro) da loja pendente.
+
+Pontos do F1 que o F2 resolveu:
+
+- a política SELECT do dono em `stores` foi decidida explicitamente (o dono vê a sua loja e os seus produtos; o catálogo público não lhe mostra os ocultos por engano);
+- a cache é limpa quando o utilizador muda (`queryClient.clear()`);
+- o carregamento de fotos está feito: políticas de escrita no Storage por caminho da loja e compressão no cliente com `browser-image-compression`.
+
+Testes estabilizados: os `findBy`/`waitFor` do Testing Library esperam até 10 s (`configure({ asyncUtilTimeout: 10_000 })` em `tests/setup.ts`) em vez de 1 s, porque a suite inteira em paralelo ultrapassava o segundo em `FeaturesPage`, `routes` («terminar sessão») e `session-cache`. O limite de cada teste ponta a ponta passou de 30 s para 60 s, e o axe espera que os avisos (sonner) saiam do ecrã.
 
 ## Decisões
 
@@ -124,6 +148,12 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 
 ## Pontos adiados
 
+### Resolvidos no F2 (as linhas da secção «Para o F2» abaixo são as antigas)
+
+- Política SELECT do dono em `stores`: decidida explicitamente no F2.
+- Cache limpa quando o utilizador muda: feito.
+- Carregamento de fotos (Storage + compressão): feito.
+
 ### Para o F2 (Vender)
 
 - Uma nova política SELECT em `stores` para o dono ou o admin alarga a visibilidade dos produtos, através da política inline. É preciso decidi-lo explicitamente.
@@ -151,6 +181,15 @@ Estas são as decisões tomadas durante a execução que não estavam nos planos
 - A verificação de diferenças nos tokens e nos tipos compara a árvore de trabalho com o índice; a pré-verificação aceita `VAR=""`.
 
 ## Decisões pendentes do responsável
+
+### Pendente do responsável (F2)
+
+- **Datas «Hoje/Ontem» ou absolutas:** o V03 e o A01 do canvas mostram «Hoje/Ontem»; o código mostra datas absolutas (`formatDateTime`), como no F1. Decidir junto com o formato de datas abaixo.
+- **Ordem dos separadores no A01:** o A01 e o A01b do canvas têm ordens diferentes. Está implementado «Por analisar / Recusadas / Aprovadas», como no A01b. Confirmar.
+- **Checklist de aprovação:** a lista de 4 itens do A01 é uma proposta do desenho, só informativa (não impede aprovar). Confirmar os itens e se deve ser obrigatória.
+- **Supabase remoto:** a migração `20261128000000_f2_vender.sql` **não** foi aplicada no remoto. Precisa de autorização explícita (`supabase db push`), depois do merge. O seed nunca vai para o remoto.
+
+### Anteriores
 
 - O separador de milhares do Kz (U+00A0 ou U+202F) e o ano com 2 ou 4 dígitos nas datas.
 - O estado «Loja não aprovada» e «— Sem ordem» em A07, e os microtextos novos de A07 (por exemplo «Escolhe uma loja da lista.», «A nota pode ter até 280 caracteres.», «Indica uma data e hora válidas.»).

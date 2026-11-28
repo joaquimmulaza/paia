@@ -10,7 +10,7 @@
 -- Não há linhas em product_images: ainda não há ficheiros nos buckets.
 
 -- ---------------------------------------------------------------------------
--- Contas: 6 donos estudantes e 1 conta da equipa (administradora).
+-- Contas: 6 donos estudantes, 1 estudante sem loja e 1 conta da equipa (administradora).
 -- ---------------------------------------------------------------------------
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
@@ -40,7 +40,9 @@ from (values
   ('a0000000-0000-4000-8000-000000000004'::uuid, 'teresa@exemplo.test', 'Teresa Exemplo', '900000004', 'student'),
   ('a0000000-0000-4000-8000-000000000005'::uuid, 'gelados@exemplo.test', 'Gil Exemplo', '900000005', 'student'),
   ('a0000000-0000-4000-8000-000000000006'::uuid, 'rita@exemplo.test', 'Rita Exemplo', '900000006', 'student'),
-  ('a0000000-0000-4000-8000-000000000007'::uuid, 'equipa@exemplo.test', 'Equipa PAIÁ', '900000007', 'staff')
+  ('a0000000-0000-4000-8000-000000000007'::uuid, 'equipa@exemplo.test', 'Equipa PAIÁ', '900000007', 'staff'),
+  -- Estudante sem loja: mostra o ecrã «Vender» (V01) de quem ainda não pediu loja.
+  ('a0000000-0000-4000-8000-000000000008'::uuid, 'sara@exemplo.test', 'Sara Exemplo', '900000008', 'student')
 ) as u (id, email, full_name, phone, affiliation);
 
 insert into public.admin_users (user_id) values ('a0000000-0000-4000-8000-000000000007');
@@ -49,13 +51,16 @@ insert into public.admin_users (user_id) values ('a0000000-0000-4000-8000-000000
 -- Lojas: as 5 aprovadas do canvas e 1 à espera de aprovação.
 -- ---------------------------------------------------------------------------
 insert into public.stores (
-  id, owner_id, name, slug, description, category_id, status,
+  id, owner_id, name, slug, description, category_id, status, logo_path,
   submitted_at, decided_at, decided_by, rating_avg, rating_count, created_at
 )
 select
   s.id, s.owner_id, s.name, s.slug, s.description,
   (select c.id from public.categories c where c.slug = s.category_slug),
   s.status::public.store_status,
+  -- Só a loja pendente tem logótipo; o ficheiro não existe no Storage local (a interface tolera-o).
+  case when s.status = 'pending_approval'
+    then 'stores/' || s.id::text || '/logo-c0000000-0000-4000-8000-000000000006.webp' end,
   now() - interval '50 days',
   case when s.status = 'approved' then now() - interval '45 days' end,
   case when s.status = 'approved' then 'a0000000-0000-4000-8000-000000000007'::uuid end,

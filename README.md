@@ -103,13 +103,14 @@ O papel de administrador vem só da tabela `public.admin_users`. Para promover o
 
 - 5 lojas aprovadas e 1 à espera de aprovação, com produtos que cobrem os casos do ecrã: esgotado, «Últimas N», «Novo», um por publicar, um ocultado pela moderação, um nome longo e um preço alto;
 - 3 destaques em «Lojas da comunidade»: Doces da Ana e Gelados Fresquinhos no ar, e Mimos da Teresa já terminado (só aparece na administração);
+- uma estudante sem loja (`sara@exemplo.test`), para ver o ecrã «Vender» de quem ainda não pediu loja; a loja pendente («Lanches da Rita») tem um logótipo cujo ficheiro não existe, e a interface mostra o fundo de imagem;
 - contas dos donos e da equipa, todas com emails `@exemplo.test`. Não servem para entrar: a palavra-passe é aleatória e ninguém a conhece.
 
 As categorias vêm da migração de F1, não do seed. Não há dados da UGS.
 
 **Só local.** Estes dados nunca vão para o projeto remoto: não apliques o `seed.sql` lá, nem copies as linhas à mão.
 
-**Sem imagens.** Ainda não há fotografias de lojas nem de produtos. Os ecrãs mostram o fundo `brand-tint` com o ícone de imagem. O envio de fotografias chega com a fase F2 (Vender).
+**Sem imagens.** O seed não traz fotografias: os ecrãs mostram o fundo `brand-tint` com o ícone de imagem. As lojas e os produtos criados em «Vender» já levam fotos reais (ver abaixo).
 
 **Entrar como administrador local e gerir os destaques:**
 
@@ -128,6 +129,19 @@ As categorias vêm da migração de F1, não do seed. Não há dados da UGS.
    - **ligar e desligar** cada destaque com o interruptor «Ativo»;
    - **remover** um destaque, depois de confirmares. A loja e os produtos não mudam.
 4. Para deixares de ser administrador: `docker exec supabase_db_paia psql -U postgres -c "delete from public.admin_users where user_id = (select id from auth.users where email = 'tu@exemplo.test')"`. Um `npm run db:reset` também apaga a conta e repõe os destaques do seed.
+
+## Vender
+
+Só os estudantes abrem loja, uma por conta. O percurso:
+
+1. **Pedir a loja** (`/vender`, `/vender/pedido`): nome, descrição, categoria e logótipo. Podes guardar um rascunho (só pede nome e categoria) ou enviar para análise (pede também descrição e logótipo). O endereço da loja sai do nome (`/loja/doces-da-ana`, e `-2`, `-3` se o nome já existir).
+2. **Esperar** (`/vender/estado`, `/vender/pedido/ver`): enquanto a equipa analisa, a loja não aparece no catálogo. A resposta aparece aqui e em Perfil (não há notificações no F2). Se for recusada, vês a mensagem da equipa e podes corrigir e voltar a enviar, sem limite de tentativas.
+3. **A administração decide** (`/admin/candidaturas`): a equipa vê os pedidos por analisar, aprova ou recusa (a recusa leva uma mensagem) e o histórico fica guardado. Se duas pessoas decidirem ao mesmo tempo, a segunda é avisada.
+4. **Gerir a loja aprovada** (`/vender/loja`, `/vender/loja/editar`, `/vender/produtos`, `/vender/produtos/novo`, `/vender/produtos/:id`): publicar, ocultar, editar e apagar produtos (nome, descrição, categoria, preço em Kz, stock e 1 a 5 fotos). Um produto publicado precisa de pelo menos 1 foto. «Pedidos recebidos» fica «Disponível em breve» até à fase F3.
+
+**Fotos.** Aceitam-se JPG, PNG e WebP até 15 MB. O navegador comprime-as para WebP (lado maior até 1600 px, o que também remove o EXIF) antes de as enviar, e o Storage recusa mais de 2 MB. Os ficheiros ficam em `stores/{id_da_loja}/…` e `products/{id_da_loja}/{id_do_produto}/…`, e cada vendedor só escreve na sua pasta.
+
+**Experimentar em local.** Com `npm run db:start` e `npm run dev` a correr, cria uma conta de estudante em http://localhost:5173/criar-conta (email `@exemplo.test`) e abre http://localhost:5173/vender. Para aprovares o pedido, torna uma segunda conta administradora, como em «Catálogo e dados ilustrativos», e abre `/admin/candidaturas`. O ponta a ponta `e2e/seller.spec.ts` faz este percurso inteiro, com a verificação de acessibilidade (axe) em V02, V03, V04b, V06 e A01.
 
 ## Trabalhar com vários agentes
 
