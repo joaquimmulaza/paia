@@ -9,7 +9,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(57);
+select plan(60);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -128,6 +128,20 @@ select is((pg_temp.store_of('20000000-0000-0000-0000-000000000002')).slug, 'doce
 select is((pg_temp.store_of('20000000-0000-0000-0000-000000000003')).slug, 'doces-da-ana-3', '(b) a terceira «Doces da Ana» fica doces-da-ana-3');
 select matches((pg_temp.store_of('20000000-0000-0000-0000-000000000004')).slug, '^loja-[a-z]{4}$', '(b) «☆☆» fica loja- mais 4 letras');
 
+-- Guardar sem mudar o endereço-base mantém o endereço atual.
+create temp table t_slug as select (pg_temp.store_of('20000000-0000-0000-0000-000000000004')).slug;
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000004');
+select public.save_my_store('☆☆', 'Agora com descrição', pg_temp.cat('outros'), null, null);
+select pg_temp.as_user('20000000-0000-0000-0000-000000000002');
+select public.save_my_store('Doces da Ana', 'Outra descrição', pg_temp.cat('doces'), null, null);
+reset role;
+
+select is((pg_temp.store_of('20000000-0000-0000-0000-000000000004')).slug, (select slug from t_slug),
+  '(b) guardar outra vez «☆☆» mantém o mesmo loja-xxxx');
+select is((pg_temp.store_of('20000000-0000-0000-0000-000000000002')).slug, 'doces-da-ana-2',
+  '(b) a segunda «Doces da Ana» guardada só com outra descrição mantém doces-da-ana-2');
+
 -- Guardar outra vez altera a mesma loja; em draft o endereço segue o nome.
 set local role authenticated;
 select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
@@ -141,6 +155,14 @@ select is((select count(*)::int from public.stores where owner_id = '20000000-00
 select is((pg_temp.store_of('20000000-0000-0000-0000-000000000001')).description, 'Bolos e doces', '(b) guardar outra vez altera a loja');
 select is((pg_temp.store_of('20000000-0000-0000-0000-000000000002')).slug, 'salgados-do-bruno', '(b) em draft o endereço muda com o nome');
 select is((pg_temp.store_of('20000000-0000-0000-0000-000000000002')).category_id, pg_temp.cat('salgados'), '(b) a categoria muda');
+
+-- doces-da-ana-2 ficou livre; a terceira, guardada sem mudar o nome, não salta para lá.
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000003');
+select public.save_my_store('Doces da Ana', 'Nova descrição', pg_temp.cat('doces'), null, null);
+reset role;
+select is((pg_temp.store_of('20000000-0000-0000-0000-000000000003')).slug, 'doces-da-ana-3',
+  '(b) com o mesmo endereço-base, o endereço não muda mesmo havendo um mais curto livre');
 
 -- ===========================================================================
 -- (c) Endereço fixo depois de aprovada

@@ -149,8 +149,9 @@ revoke execute on function private.require_student() from public, anon, authenti
 -- Cria a loja em draft (se a conta ainda não tem) ou altera-a. Devolve o id.
 -- * Rascunho: só exige nome e categoria; a descrição pode ficar vazia e as
 --   imagens nulas.
--- * Endereço: recalculado a partir do nome em draft e rejected; em approved
---   fica fixo, para não quebrar ligações partilhadas. pending_approval e
+-- * Endereço: em draft e rejected, recalculado quando o endereço-base do nome
+--   novo difere do do nome atual; senão fica o atual. Em approved fica fixo,
+--   para não quebrar ligações partilhadas. pending_approval e
 --   suspended dão STORE_LOCKED.
 -- * O trinco do endereço é tomado antes de ler a loja, por isso duas
 --   gravações da mesma conta também ficam em série (nunca duas lojas por
@@ -212,7 +213,10 @@ begin
     insert into public.stores (id, owner_id, name, slug, description, category_id, logo_path, cover_path)
     values (v_id, v_uid, v_name, v_slug, v_description, p_category_id, p_logo_path, p_cover_path);
   else
-    if v_store.status = 'approved' then
+    -- Aprovada, ou com o mesmo endereço-base: o endereço atual fica (não
+    -- troca de loja-xxxx nem de sufixo -n a cada gravação).
+    if v_store.status = 'approved'
+       or private.store_slug_base(v_name) = private.store_slug_base(v_store.name) then
       v_slug := v_store.slug;
     else
       v_slug := private.next_free_store_slug(private.store_slug_base(v_name), v_id);
