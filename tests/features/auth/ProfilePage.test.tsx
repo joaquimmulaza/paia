@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   getMyProfile: vi.fn(),
 }));
 vi.mock('@/features/auth/api', () => api);
+const sellerApi = vi.hoisted(() => ({ getMyStore: vi.fn(), getMyStoreDecisions: vi.fn() }));
+vi.mock('@/features/seller/api', () => sellerApi);
 vi.mock('@/features/auth/AuthProvider', () => ({
   useAuth: () => ({ session: { user: { id: 'user-test' } }, loading: false }),
 }));
@@ -21,6 +23,8 @@ vi.mock('sonner', async (importOriginal) => ({
 }));
 
 import { ProfilePage } from '@/features/auth/ProfilePage';
+import type { MyStoreKind } from '@/features/seller/types';
+import { makeStore } from '../seller/fixtures';
 import { renderRoutes } from '../../utils/renderRoutes';
 
 const student: MyProfile = {
@@ -46,6 +50,7 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sellerApi.getMyStore.mockResolvedValue(null);
 });
 
 describe('ProfilePage (K03)', () => {
@@ -78,16 +83,66 @@ describe('ProfilePage (K03)', () => {
     expect(screen.queryByRole('region', { name: 'A minha loja' })).toBeNull();
   });
 
-  it('o estudante vê o cartão A minha loja; Quero vender avisa que vem em breve', async () => {
-    const user = userEvent.setup({ delay: null });
+  it('o estudante sem loja vê o cartão A minha loja; Quero vender leva a /vender', async () => {
     api.getMyProfile.mockResolvedValue(student);
     mount();
     const shop = await screen.findByRole('region', { name: 'A minha loja' });
     expect(shop).toHaveTextContent(
       'Ainda não tens loja. Pede a tua: a equipa do PAIÁ analisa e responde.',
     );
-    await user.click(screen.getByRole('button', { name: 'Quero vender' }));
-    expect(toast).toHaveBeenCalledWith('Disponível em breve');
+    expect(await screen.findByRole('link', { name: 'Quero vender' })).toHaveAttribute(
+      'href',
+      '/vender',
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'draft',
+      'Rascunho',
+      'O pedido ainda não foi enviado.',
+      'Continuar o pedido',
+      '/vender/pedido',
+    ],
+    [
+      'pending',
+      'Em análise',
+      'A equipa está a analisar a tua loja.',
+      'Ver o estado',
+      '/vender/estado',
+    ],
+    ['rejected', 'Recusada', 'A loja ainda não foi aprovada.', 'Ver a mensagem', '/vender/estado'],
+  ] as const)(
+    'o ShopCard em %s mostra «%s» e a ação certa',
+    async (kind: MyStoreKind, tag, text, action, href) => {
+      api.getMyProfile.mockResolvedValue(student);
+      sellerApi.getMyStore.mockResolvedValue(makeStore({ kind }));
+      mount();
+      const card = await screen.findByRole('region', { name: 'Doces da Ana' });
+      expect(card).toHaveTextContent(tag);
+      expect(card).toHaveTextContent(text);
+      expect(screen.getByRole('link', { name: action })).toHaveAttribute('href', href);
+    },
+  );
+
+  it('o ShopCard aprovado é uma ligação para /vender/loja', async () => {
+    api.getMyProfile.mockResolvedValue(student);
+    sellerApi.getMyStore.mockResolvedValue(makeStore({ kind: 'approved', status: 'approved' }));
+    mount();
+    const link = await screen.findByRole('link', { name: /Doces da Ana/ });
+    expect(link).toHaveAttribute('href', '/vender/loja');
+    expect(link).toHaveTextContent('Gerir produtos e loja');
+    expect(link).toHaveTextContent('Aprovada');
+  });
+
+  it('o ShopCard suspenso mostra «Suspensa», sem ação', async () => {
+    api.getMyProfile.mockResolvedValue(student);
+    sellerApi.getMyStore.mockResolvedValue(makeStore({ kind: 'suspended', status: 'suspended' }));
+    mount();
+    const card = await screen.findByRole('region', { name: 'Doces da Ana' });
+    expect(card).toHaveTextContent('Suspensa');
+    expect(card.querySelector('a')).toBeNull();
   });
 
   it('um administrador vê a ligação «Administração» para /admin/destaques', async () => {

@@ -40,6 +40,12 @@ const admin = vi.hoisted(() => ({
 }));
 vi.mock('@/features/admin/api', () => admin);
 
+const seller = vi.hoisted(() => ({
+  getMyStore: vi.fn(async () => null),
+  getMyStoreDecisions: vi.fn(async () => []),
+}));
+vi.mock('@/features/seller/api', () => seller);
+
 import { routes } from '@/app/router';
 import { renderRoutes } from '../utils/renderRoutes';
 
@@ -121,6 +127,24 @@ describe('rotas da aplicação', () => {
     const { router } = renderRoutes(routes, '/admin/destaques');
     expect(await screen.findByRole('heading', { name: 'Entra no PAIÁ' })).toBeInTheDocument();
     expect(router.state.location.search).toBe('?voltar=%2Fadmin%2Fdestaques');
+  });
+
+  it.each(['/vender', '/vender/pedido', '/vender/estado', '/vender/pedido/ver'])(
+    '%s sem sessão vai para /entrar com voltar',
+    async (path) => {
+      const { router } = renderRoutes(routes, path);
+      expect(await screen.findByRole('heading', { name: 'Entra no PAIÁ' })).toBeInTheDocument();
+      expect(new URLSearchParams(router.state.location.search).get('voltar')).toBe(path);
+    },
+  );
+
+  it('/vender com sessão de estudante sem loja mostra o V01', async () => {
+    auth.state = { session: { user: { id: 'u1' } }, loading: false };
+    api.getMyProfile.mockResolvedValue(student);
+    renderRoutes(routes, '/vender');
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
+      'Vende à tua comunidade',
+    );
   });
 
   it('uma rota desconhecida mostra «Página não encontrada» com ligação ao início', async () => {

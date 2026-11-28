@@ -9,6 +9,10 @@ import { HomePage } from '@/features/catalog/HomePage';
 import { ProductPage } from '@/features/catalog/ProductPage';
 import { StorePage } from '@/features/catalog/StorePage';
 import { StoresPage } from '@/features/catalog/StoresPage';
+import { SellPage } from '@/features/seller/SellPage';
+import { StoreRequestPage } from '@/features/seller/StoreRequestPage';
+import { StoreRequestViewPage } from '@/features/seller/StoreRequestViewPage';
+import { StoreStatusPage } from '@/features/seller/StoreStatusPage';
 import { RequireAuth, RequireGuest } from './guards';
 import { NotFoundPage } from './NotFoundPage';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -42,6 +46,39 @@ export const routes: RouteObject[] = [
     element: (
       <RequireAuth>
         <ProfilePage />
+      </RequireAuth>
+    ),
+  },
+  // Candidatura da loja (V01–V03b). O painel da loja aprovada (/vender/loja) chega na Task 6.
+  {
+    path: '/vender',
+    element: (
+      <RequireAuth>
+        <SellPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/pedido',
+    element: (
+      <RequireAuth>
+        <StoreRequestPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/estado',
+    element: (
+      <RequireAuth>
+        <StoreStatusPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: '/vender/pedido/ver',
+    element: (
+      <RequireAuth>
+        <StoreRequestViewPage />
       </RequireAuth>
     ),
   },

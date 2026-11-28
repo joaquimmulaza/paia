@@ -1,12 +1,16 @@
-// Ecrã K03 · Perfil (só o que tem destino na F0).
+// Ecrã K03 · Perfil, com o cartão «A minha loja» do K03c (muda com o estado da loja).
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
 import { AppHeader } from '@/components/paia/AppHeader';
 import { PageShell } from '@/components/paia/PageShell';
 import { Button } from '@/components/ui/button';
+import { LoadError } from '@/features/catalog/components/LoadError';
+import { StoreMark } from '@/features/seller/components/seller-ui';
+import { StoreTag } from '@/features/seller/components/StoreTag';
+import { useMyStore } from '@/features/seller/queries';
+import type { MyStore } from '@/features/seller/types';
 import { cn, focusRing } from '@/lib/utils';
 import { useDocumentTitle } from '@/lib/use-document-title';
 import { getMyProfile, signOut, type MyProfile } from './api';
@@ -147,27 +151,109 @@ function ProfileDetails({ profile }: { profile: MyProfile }) {
   );
 }
 
+const shopCardClass = 'flex flex-col gap-2.5 rounded-lg border-2 border-ink p-4';
+
 function ShopCard() {
+  const store = useMyStore();
+  if (store.isPending) return null;
+  if (store.isError && !store.data) {
+    return (
+      <section aria-labelledby="minha-loja" className={cn(shopCardClass, 'bg-surface')}>
+        <h2 id="minha-loja" className="m-0 font-display text-label font-bold text-ink uppercase">
+          A minha loja
+        </h2>
+        <LoadError
+          error={store.error}
+          retrying={store.isFetching}
+          onRetry={() => void store.refetch()}
+        />
+      </section>
+    );
+  }
+  const data = store.data;
+  if (!data) {
+    return (
+      <section aria-labelledby="minha-loja" className={cn(shopCardClass, 'bg-brand-tint')}>
+        <h2 id="minha-loja" className="m-0 font-display text-label font-bold text-ink uppercase">
+          A minha loja
+        </h2>
+        <p className="m-0 font-body text-body">
+          Ainda não tens loja. Pede a tua: a equipa do PAIÁ analisa e responde.
+        </p>
+        <Button asChild variant="accent" size="sm" className="self-start">
+          <Link to="/vender">Quero vender</Link>
+        </Button>
+      </section>
+    );
+  }
+  if (data.kind === 'approved') return <ApprovedShop store={data} />;
+  return <ShopStatusCard store={data} />;
+}
+
+const SHOP_STATE: Record<
+  'draft' | 'pending' | 'rejected' | 'suspended',
+  { text: string; action?: { label: string; to: string; variant: 'primary' | 'secondary' } }
+> = {
+  draft: {
+    text: 'O pedido ainda não foi enviado. Acaba de o preencher e envia-o para análise.',
+    action: { label: 'Continuar o pedido', to: '/vender/pedido', variant: 'primary' },
+  },
+  pending: {
+    text: 'A equipa está a analisar a tua loja. A resposta aparece aqui.',
+    action: { label: 'Ver o estado', to: '/vender/estado', variant: 'secondary' },
+  },
+  rejected: {
+    text: 'A loja ainda não foi aprovada. Lê a mensagem da equipa, corrige e envia outra vez.',
+    action: { label: 'Ver a mensagem', to: '/vender/estado', variant: 'primary' },
+  },
+  // F4: só o aviso, sem ação (o motivo chega com a moderação).
+  suspended: { text: 'A tua loja está suspensa. Fala com a equipa do PAIÁ.' },
+};
+
+function ShopStatusCard({ store }: { store: MyStore }) {
+  if (store.kind === 'none' || store.kind === 'approved') return null;
+  const { text, action } = SHOP_STATE[store.kind];
   return (
-    <section
-      aria-labelledby="minha-loja"
-      className="flex flex-col gap-2.5 rounded-lg border-2 border-ink bg-brand-tint p-4"
-    >
-      <h2 id="minha-loja" className="m-0 font-display text-label font-bold text-ink uppercase">
-        A minha loja
-      </h2>
-      <p className="m-0 font-body text-body">
-        Ainda não tens loja. Pede a tua: a equipa do PAIÁ analisa e responde.
-      </p>
-      <Button
-        variant="accent"
-        size="sm"
-        className="self-start"
-        onClick={() => toast('Disponível em breve')}
-      >
-        Quero vender
-      </Button>
+    <section aria-labelledby="minha-loja" className={cn(shopCardClass, 'bg-surface')}>
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          id="minha-loja"
+          className="m-0 min-w-0 font-display text-label font-bold break-words text-ink uppercase"
+        >
+          {store.name}
+        </h2>
+        <StoreTag kind={store.kind} />
+      </div>
+      <p className="m-0 font-body text-body">{text}</p>
+      {action && (
+        <Button asChild variant={action.variant} size="sm" className="self-start">
+          <Link to={action.to}>{action.label}</Link>
+        </Button>
+      )}
     </section>
+  );
+}
+
+/** s-storelink: a loja aprovada leva ao painel. */
+function ApprovedShop({ store }: { store: MyStore }) {
+  return (
+    <Link
+      to="/vender/loja"
+      className={cn(
+        'flex items-center gap-3 rounded-lg border-2 border-ink bg-surface p-3 text-ink no-underline shadow-hard-sm',
+        'touch-manipulation [-webkit-tap-highlight-color:transparent] active:bg-brand-tint',
+        focusRing,
+      )}
+    >
+      <StoreMark name={store.name} logoPath={store.logoPath} />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <strong className="font-body text-body font-bold break-words">{store.name}</strong>
+        <span className="font-body text-small font-medium text-ink-muted">
+          Gerir produtos e loja
+        </span>
+      </span>
+      <StoreTag kind="approved" />
+    </Link>
   );
 }
 

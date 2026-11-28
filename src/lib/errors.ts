@@ -33,6 +33,19 @@ export const MESSAGES = {
   alreadyDecided:
     'Esta candidatura já foi decidida por outra pessoa da equipa. Atualizámos o estado.',
   messageRequired: 'Para recusar, diz à candidata o que deve corrigir.',
+  storeNameRequired: 'Escreve o nome da loja.',
+  storeDescriptionRequired: 'Diz em poucas palavras o que vendes.',
+  storeCategoryRequired: 'Escolhe a categoria principal.',
+  storeLogoRequired: 'Escolhe o logótipo ou uma foto da loja.',
+  submitFailed:
+    'Não foi possível enviar o pedido. Verifica a ligação e tenta outra vez. O que escreveste ficou guardado.',
+  saveFailed:
+    'Não foi possível guardar o rascunho. Verifica a ligação e tenta outra vez. O que escreveste continua aqui.',
+  /** V02b: o resumo dos campos em falta ao enviar. */
+  missingFields: (n: number) =>
+    n === 1
+      ? 'Falta preencher 1 campo. Corrige-o e envia outra vez.'
+      : `Falta preencher ${n} campos. Corrige-os e envia outra vez.`,
   /** `mb` com vírgula decimal quando não é inteiro (por exemplo 16,3). */
   imageTooLarge: (mb: number) =>
     `A imagem tem ${Number.isInteger(mb) ? mb : mb.toFixed(1).replace('.', ',')} MB. Escolhe uma com até 15 MB.`,
