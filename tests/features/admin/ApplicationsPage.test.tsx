@@ -42,6 +42,8 @@ function summary(over: Partial<ApplicationSummary> & Pick<ApplicationSummary, 'i
     ownerAffiliation: 'student',
     submittedAt: '2026-11-28T09:02:00.000Z',
     decidedAt: null,
+    decidedByName: null,
+    rejectionCount: 0,
     ...over,
   } satisfies ApplicationSummary;
 }
@@ -135,10 +137,18 @@ describe('ApplicationsPage (A01)', () => {
     expect(within(list).getByRole('button', { name: 'Capas da Rita' })).not.toHaveAttribute(
       'aria-current',
     );
+    expect(
+      within(list)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Loja', 'Pedida por', 'Enviada']);
+    // «Pedida por» com o primeiro nome e a inicial do apelido, como no A01.
+    expect(within(list).getByText('Ana P.')).toBeInTheDocument();
+    expect(within(list).getByText('Rita M.')).toBeInTheDocument();
     const detail = await detailBox('Doces da Ana');
     expect(within(detail).getByText('Em análise')).toBeInTheDocument();
     expect(
-      await within(detail).findByText('Ana Paula · Estudante · conta criada há 3 semanas'),
+      await within(detail).findByText('Ana P. · Estudante · conta criada há 3 semanas'),
     ).toBeInTheDocument();
     expect(within(detail).getByText('…/loja/doces-da-ana')).toBeInTheDocument();
     for (const label of [
@@ -327,7 +337,7 @@ describe('ApplicationsPage (A01)', () => {
     await user.click(await within(list).findByRole('button', { name: 'Capas da Rita' }));
     const detail = await detailBox('Capas da Rita');
     expect(
-      await within(detail).findByText('Rita Mendes · Estudante · conta criada há 3 semanas'),
+      await within(detail).findByText('Rita M. · Estudante · conta criada há 3 semanas'),
     ).toBeInTheDocument();
   });
 });
@@ -340,13 +350,15 @@ describe('ApplicationsPage (A01b), recusadas e histórico', () => {
     ownerName: 'Rita Mendes',
     submittedAt: '2026-11-27T15:40:00.000Z',
     decidedAt: '2026-11-27T16:05:00.000Z',
+    decidedByName: 'Joana Administradora',
+    rejectionCount: 2,
   });
   const DECISIONS: StoreDecisionEntry[] = [
     {
       decision: 'rejected',
       message: 'A descrição não diz o que vendes.',
       checklist: { name_description: false, allowed: true, images: true, account: true },
-      adminName: 'Admin J.',
+      adminName: 'Joana Administradora',
       createdAt: '2026-11-27T16:05:00.000Z',
     },
   ];
@@ -374,6 +386,16 @@ describe('ApplicationsPage (A01b), recusadas e histórico', () => {
     expect(api.listApplications).toHaveBeenCalledWith('rejected');
     const list = await screen.findByRole('region', { name: 'Candidaturas recusadas' });
     expect(await within(list).findByRole('button', { name: 'Capas da Rita' })).toBeInTheDocument();
+    // A01b: Loja / Decisão (data e «2.ª recusa») / Por (nome abreviado de quem decidiu).
+    expect(
+      within(list)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Loja', 'Decisão', 'Por']);
+    const row = within(list).getByRole('button', { name: 'Capas da Rita' }).closest('tr');
+    expect(row).toHaveTextContent('2.ª recusa');
+    expect(row).toHaveTextContent('Joana A.');
+    expect(row).not.toHaveTextContent('Rita M.');
 
     const detail = await detailBox('Capas da Rita');
     expect(await within(detail).findByText('Recusada')).toBeInTheDocument();
@@ -382,11 +404,24 @@ describe('ApplicationsPage (A01b), recusadas e histórico', () => {
     const history = within(detail).getByRole('list');
     const items = within(history).getAllByRole('listitem');
     expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent(/Recusada por Admin J\./);
+    expect(items[0]).toHaveTextContent(/Recusada por Joana A\./);
     expect(items[0]).toHaveTextContent('A descrição não diz o que vendes.');
     expect(items[1]).toHaveTextContent(/Enviada para análise\./);
     // A mensagem enviada aparece também nos dados da decisão.
     expect(within(detail).getAllByText('A descrição não diz o que vendes.')).toHaveLength(2);
+  });
+
+  it('na lista das aprovadas não aparece o número de recusas', async () => {
+    const user = userEvent.setup();
+    api.listApplications.mockImplementation(async (status: string) =>
+      status === 'approved' ? [{ ...REJECTED, rejectionCount: 1 }] : PENDING,
+    );
+    mount();
+    await user.click(await screen.findByRole('button', { name: 'Aprovadas' }));
+    const list = await screen.findByRole('region', { name: 'Candidaturas aprovadas' });
+    const row = (await within(list).findByRole('button', { name: 'Capas da Rita' })).closest('tr');
+    expect(row).not.toHaveTextContent('recusa');
+    expect(row).toHaveTextContent('Joana A.');
   });
 
   it('uma pendente com recusas anteriores mostra o histórico debaixo do formulário', async () => {
@@ -396,7 +431,7 @@ describe('ApplicationsPage (A01b), recusadas e histórico', () => {
     const detail = await detailBox('Doces da Ana');
     const items = await within(detail).findAllByRole('listitem');
     expect(items[0]).toHaveTextContent(/Enviada para análise\./);
-    expect(items[1]).toHaveTextContent(/Recusada por Admin J\./);
+    expect(items[1]).toHaveTextContent(/Recusada por Joana A\./);
     expect(within(detail).getByRole('button', { name: 'Aprovar loja' })).toBeInTheDocument();
   });
 });

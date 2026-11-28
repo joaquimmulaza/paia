@@ -14,6 +14,7 @@ import { cn, focusRing } from '@/lib/utils';
 import { AdminShell, usePendingCount } from './AdminShell';
 import { ApplicationDetail } from './ApplicationDetail';
 import { listApplications } from './applications-api';
+import { shortPersonName } from './person-name';
 import { adminKeys, invalidateApplications } from './queries';
 import type { ApplicationStatus, ApplicationSummary } from './types';
 
@@ -183,15 +184,14 @@ export function ApplicationsPage() {
               <table className="w-full border-collapse font-body text-sm leading-5">
                 <thead>
                   <tr>
-                    <th scope="col" className={thClass}>
-                      Loja
-                    </th>
-                    <th scope="col" className={thClass}>
-                      Pedida por
-                    </th>
-                    <th scope="col" className={thClass}>
-                      {status === 'pending_approval' ? 'Enviada' : 'Decisão'}
-                    </th>
+                    {(status === 'pending_approval'
+                      ? ['Loja', 'Pedida por', 'Enviada']
+                      : ['Loja', 'Decisão', 'Por']
+                    ).map((h) => (
+                      <th key={h} scope="col" className={thClass}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -232,7 +232,9 @@ type RowProps = {
 };
 
 function ApplicationRow({ application: a, status, selected, onSelect }: RowProps) {
-  const at = status === 'pending_approval' ? a.submittedAt : a.decidedAt;
+  const pending = status === 'pending_approval';
+  const at = pending ? a.submittedAt : a.decidedAt;
+  const date = at ? formatDateTime(at) : '—';
   return (
     <tr
       className={cn('[&:last-child>td]:border-b-0', selected && '[&>td]:bg-brand-tint')}
@@ -252,11 +254,28 @@ function ApplicationRow({ application: a, status, selected, onSelect }: RowProps
         </button>
         {a.categoryName && <span className={cn(smallClass, 'block')}>{a.categoryName}</span>}
       </td>
-      <td className={cn(tdClass, 'min-w-32')}>
-        {a.ownerName}
-        <span className={cn(smallClass, 'block')}>{AFFILIATION_LABEL[a.ownerAffiliation]}</span>
-      </td>
-      <td className={cn(tdClass, 'whitespace-nowrap')}>{at ? formatDateTime(at) : '—'}</td>
+      {pending ? (
+        <>
+          <td className={cn(tdClass, 'min-w-28')}>
+            {shortPersonName(a.ownerName)}
+            <span className={cn(smallClass, 'block')}>{AFFILIATION_LABEL[a.ownerAffiliation]}</span>
+          </td>
+          <td className={cn(tdClass, 'whitespace-nowrap')}>{date}</td>
+        </>
+      ) : (
+        <>
+          <td className={cn(tdClass, 'whitespace-nowrap')}>
+            {date}
+            {/* A01b: «1.ª recusa», só nas recusadas. */}
+            {status === 'rejected' && a.rejectionCount > 0 && (
+              <span className={cn(smallClass, 'block')}>{a.rejectionCount}.ª recusa</span>
+            )}
+          </td>
+          <td className={cn(tdClass, 'whitespace-nowrap')}>
+            {a.decidedByName ? shortPersonName(a.decidedByName) : '—'}
+          </td>
+        </>
+      )}
     </tr>
   );
 }

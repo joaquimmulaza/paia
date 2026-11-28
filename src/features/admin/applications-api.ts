@@ -29,6 +29,8 @@ function toSummary(r: ApplicationSummaryRow): ApplicationSummary {
     ownerAffiliation: r.owner_affiliation,
     submittedAt: r.submitted_at ?? null,
     decidedAt: r.decided_at ?? null,
+    decidedByName: r.decided_by_name ?? null,
+    rejectionCount: Number(r.rejection_count) || 0,
   };
 }
 

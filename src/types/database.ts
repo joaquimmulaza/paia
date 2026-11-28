@@ -254,7 +254,7 @@ isOneToOne: true
                            },
 "admin_list_store_applications":
 { Args: { "p_cursor_at"?: string,"p_cursor_id"?: string,"p_limit"?: number,"p_status": Database["public"]['Enums']["store_status"] }; Returns: {
-              "category_name": string,"decided_at": string,"id": string,"logo_path": string,"name": string,"owner_affiliation": Database["public"]['Enums']["affiliation"],"owner_name": string,"slug": string,"submitted_at": string
+              "category_name": string,"decided_at": string,"decided_by_name": string,"id": string,"logo_path": string,"name": string,"owner_affiliation": Database["public"]['Enums']["affiliation"],"owner_name": string,"rejection_count": number,"slug": string,"submitted_at": string
             }[]
                            },
 "admin_list_store_decisions":

@@ -485,6 +485,9 @@ grant execute on function public.admin_decide_store(uuid, public.store_decision,
 -- * Outros estados: (decided_at, id) desc, a decisão mais recente primeiro;
 --   a página seguinte é (decided_at, id) < cursor.
 -- * draft não é candidatura: dá INVALID_STATUS.
+-- * decided_by_name: o nome de quem decidiu (stores.decided_by); nulo numa
+--   pendente (o envio limpa decided_by). rejection_count: quantas recusas a
+--   loja já teve (o «1.ª recusa» do A01b).
 -- * O cursor tem as duas partes ou nenhuma (INVALID_CURSOR). p_limit fica
 --   entre 1 e 50 (20 por omissão), como em search_products.
 create function public.admin_list_store_applications(
@@ -502,7 +505,9 @@ returns table (
   owner_name text,
   owner_affiliation public.affiliation,
   submitted_at timestamptz,
-  decided_at timestamptz
+  decided_at timestamptz,
+  decided_by_name text,
+  rejection_count integer
 )
 language plpgsql
 stable
@@ -527,9 +532,13 @@ begin
 
   if p_status = 'pending_approval' then
     return query
-      select s.id, s.name, s.slug, c.name, s.logo_path, p.full_name, p.affiliation, s.submitted_at, s.decided_at
+      select s.id, s.name, s.slug, c.name, s.logo_path, p.full_name, p.affiliation, s.submitted_at, s.decided_at,
+             dp.full_name,
+             (select count(*)::integer from public.store_decisions d
+               where d.store_id = s.id and d.decision = 'rejected')
         from public.stores s
         join public.profiles p on p.id = s.owner_id
+        left join public.profiles dp on dp.id = s.decided_by
         left join public.categories c on c.id = s.category_id
        where s.status = p_status
          and (p_cursor_at is null or (s.submitted_at, s.id) > (p_cursor_at, p_cursor_id))
@@ -537,9 +546,13 @@ begin
        limit v_limit;
   else
     return query
-      select s.id, s.name, s.slug, c.name, s.logo_path, p.full_name, p.affiliation, s.submitted_at, s.decided_at
+      select s.id, s.name, s.slug, c.name, s.logo_path, p.full_name, p.affiliation, s.submitted_at, s.decided_at,
+             dp.full_name,
+             (select count(*)::integer from public.store_decisions d
+               where d.store_id = s.id and d.decision = 'rejected')
         from public.stores s
         join public.profiles p on p.id = s.owner_id
+        left join public.profiles dp on dp.id = s.decided_by
         left join public.categories c on c.id = s.category_id
        where s.status = p_status
          and (p_cursor_at is null or (s.decided_at, s.id) < (p_cursor_at, p_cursor_id))

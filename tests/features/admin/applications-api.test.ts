@@ -26,6 +26,8 @@ const listRow = {
   owner_affiliation: 'student',
   submitted_at: '2026-11-28T09:02:00+00:00',
   decided_at: null,
+  decided_by_name: null,
+  rejection_count: 1,
 };
 
 describe('listApplications', () => {
@@ -42,6 +44,8 @@ describe('listApplications', () => {
         ownerAffiliation: 'student',
         submittedAt: '2026-11-28T09:02:00+00:00',
         decidedAt: null,
+        decidedByName: null,
+        rejectionCount: 1,
       },
     ]);
     expect(rpc).toHaveBeenCalledWith('admin_list_store_applications', {

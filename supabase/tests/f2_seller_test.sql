@@ -10,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(204);
+select plan(209);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -519,6 +519,12 @@ select results_eq(
          pg_temp.sid('20000000-0000-0000-0000-000000000001')),
   $$ values ('Doces da Ana'::text, 'doces-da-ana'::text, 'Doces'::text, 'Ana Um'::text, 'student'::text, true, true) $$,
   '(i) a lista traz a loja, a categoria e o dono');
+select results_eq(
+  format($$ select decided_by_name, rejection_count
+              from public.admin_list_store_applications('pending_approval') where id = %L $$,
+         pg_temp.sid('20000000-0000-0000-0000-000000000001')),
+  $$ values (null::text, 0) $$,
+  '(i) uma pendente sem decisões não tem quem decidiu e tem 0 recusas');
 
 -- Uma candidatura.
 select results_eq(
@@ -604,6 +610,12 @@ select is(
   public.admin_decide_store(pg_temp.sid('20000000-0000-0000-0000-000000000008'), 'rejected', E'  Falta a foto   da capa \n\n\n ',
                             '{"images": false}', pg_temp.sub_at(pg_temp.sid('20000000-0000-0000-0000-000000000008'))),
   'rejected'::public.store_status, '(i) recusar com mensagem devolve rejected');
+select results_eq(
+  format($$ select decided_by_name, rejection_count
+              from public.admin_list_store_applications('rejected') where id = %L $$,
+         pg_temp.sid('20000000-0000-0000-0000-000000000008')),
+  $$ values ('Admin Teste'::text, 2) $$,
+  '(i) uma loja recusada duas vezes tem rejection_count 2 e o nome de quem decidiu');
 select pg_temp.as_user('20000000-0000-0000-0000-000000000008');
 select is((select last_message from public.get_my_store()), 'Falta a foto da capa',
   '(i) o dono vê a mensagem da recusa, normalizada');
@@ -613,6 +625,12 @@ select ok(
   exists (select 1 from public.admin_list_store_applications('pending_approval')
            where id = pg_temp.sid('20000000-0000-0000-0000-000000000008')),
   '(i) reenviada, volta a aparecer nas pendentes');
+select results_eq(
+  format($$ select decided_by_name, rejection_count
+              from public.admin_list_store_applications('pending_approval') where id = %L $$,
+         pg_temp.sid('20000000-0000-0000-0000-000000000008')),
+  $$ values (null::text, 2) $$,
+  '(i) reenviada: sem quem decidiu, e as recusas anteriores continuam a contar');
 reset role;
 
 -- Ecrã desatualizado: o admin abriu o envio anterior e a loja foi reenviada
@@ -698,6 +716,18 @@ select results_eq(
   $$ select id from public.admin_list_store_applications('rejected') $$,
   $$ select pg_temp.sid('20000000-0000-0000-0000-000000000008') $$,
   '(i) a recusada aparece nas recusadas');
+select results_eq(
+  format($$ select decided_by_name, rejection_count
+              from public.admin_list_store_applications('rejected') where id = %L $$,
+         pg_temp.sid('20000000-0000-0000-0000-000000000008')),
+  $$ values ('Admin Teste'::text, 3) $$,
+  '(i) recusada outra vez: rejection_count 3');
+select results_eq(
+  format($$ select decided_by_name, rejection_count
+              from public.admin_list_store_applications('approved') where id = %L $$,
+         pg_temp.sid('20000000-0000-0000-0000-000000000002')),
+  $$ values ('Admin Teste'::text, 0) $$,
+  '(i) uma aprovada sem recusas tem o nome de quem aprovou e 0 recusas');
 select is(public.admin_count_pending_stores(), 0, '(i) depois das decisões não há pendentes');
 select throws_ok($$ select * from public.admin_list_store_applications('draft') $$,
   'P0001', 'INVALID_STATUS', '(i) listar rascunhos dá INVALID_STATUS');

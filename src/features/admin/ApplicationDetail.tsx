@@ -16,6 +16,7 @@ import { HistoryItem, StoreMark } from '@/features/seller/components/seller-ui';
 import { MESSAGES } from '@/lib/errors';
 import { cn, focusRing } from '@/lib/utils';
 import { accountAgeLabel } from './account-age';
+import { firstName, shortPersonName } from './person-name';
 import { decideStore, getApplication, listStoreDecisions } from './applications-api';
 import { adminKeys, invalidateApplications } from './queries';
 import type {
@@ -69,10 +70,6 @@ const dtClass = 'font-medium text-ink-muted';
 const ddClass = 'm-0 break-words whitespace-pre-line';
 const kickerClass = 'm-0 font-display text-label font-bold text-ink-muted uppercase';
 const smallClass = 'm-0 font-body text-small font-medium text-ink-muted';
-
-function firstName(fullName: string): string {
-  return fullName.trim().split(/\s+/)[0] ?? fullName;
-}
 
 type Props = {
   storeId: string;
@@ -174,7 +171,7 @@ export function ApplicationDetail({ storeId, onDecided, focusTitle, onTitleFocus
                 <dd className={ddClass}>…/loja/{app.slug}</dd>
                 <dt className={dtClass}>Proprietária</dt>
                 <dd className={ddClass}>
-                  {app.ownerName} · {AFFILIATION_LABEL[app.ownerAffiliation]} ·{' '}
+                  {shortPersonName(app.ownerName)} · {AFFILIATION_LABEL[app.ownerAffiliation]} ·{' '}
                   {accountAgeLabel(app.ownerCreatedAt)}
                 </dd>
               </dl>
@@ -383,7 +380,7 @@ function History({
     at: d.createdAt,
     key: `d${i}`,
     label: d.adminName
-      ? `${DECISION_LABEL[d.decision]} por ${d.adminName}`
+      ? `${DECISION_LABEL[d.decision]} por ${shortPersonName(d.adminName)}`
       : DECISION_LABEL[d.decision],
     message: d.decision === 'rejected' ? d.message : null,
   }));

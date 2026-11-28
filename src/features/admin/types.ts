@@ -83,6 +83,8 @@ export interface ApplicationSummaryRow {
   owner_affiliation: Affiliation;
   submitted_at: string | null;
   decided_at: string | null;
+  decided_by_name: string | null;
+  rejection_count: number;
 }
 
 export interface ApplicationSummary {
@@ -95,6 +97,10 @@ export interface ApplicationSummary {
   ownerAffiliation: Affiliation;
   submittedAt: string | null;
   decidedAt: string | null;
+  /** Quem decidiu (nome completo); nulo numa pendente. */
+  decidedByName: string | null;
+  /** Quantas recusas a loja já teve («2.ª recusa» no A01b). */
+  rejectionCount: number;
 }
 
 /** Uma linha de `admin_get_store_application`. */
