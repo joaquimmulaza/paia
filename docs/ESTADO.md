@@ -15,14 +15,17 @@
 
 ## Online (produção)
 
-- **Site:** https://paia-dun.vercel.app (Vercel, projeto `paia`, equipa `joaquim-mulazas-projects`). Deploy de produção a partir de `main` (`9824ed8`), feito pela API da Vercel; o repositório ainda não está ligado à Vercel por Git, por isso um push para `main` **não** faz deploy sozinho.
+- **Site:** https://paia-dun.vercel.app (Vercel, projeto `paia`, equipa `joaquim-mulazas-projects`). O endereço `paia.vercel.app` pertence a um projeto de outra conta, por isso a Vercel deu `paia-dun`.
+- **Deploy:** o repositório `joaquimmulaza/paia` está ligado à Vercel por Git (2026-11-28). Cada push para `main` faz deploy de produção; os outros branches fazem deploys de pré-visualização.
 - **Variáveis na Vercel:** `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública anon), em production e preview. Nenhuma chave secreta.
 - **`vercel.json`:** Vite, `npm run build`, `dist`, e rewrite de todas as rotas para `index.html` (SPA).
-- **Supabase remoto `paia` (`pkubomgkptdwlewgocqm`):** F0 e F1 aplicados em 2026-11-27 pelo MCP do Supabase, **sem o seed** (só as 8 categorias da migração). O catálogo online está vazio até F2.
-  - Atenção: o histórico remoto tem as versões `20261127171240_f0_base`, `20261127171510_f1_catalogo` e `20261127171534_f1_fix_unicode`, não as dos ficheiros (`20261125000000`, `20261126000000`). Antes de usar `supabase db push`, alinhar o histórico com `supabase migration repair` (ação remota: pede autorização).
-  - `f1_fix_unicode` só repõe os caracteres Unicode de `normalize_text` e `normalize_multiline` (construídos com `chr()`), que o transporte tinha trocado por espaços. Depois disso, o código das 23 funções, as políticas, os grants por coluna, as colunas e as categorias são iguais ao local (comparado por md5). A única diferença: o remoto dá também EXECUTE ao `service_role` nas funções `public` (predefinição do Supabase).
+- **Supabase remoto `paia` (`pkubomgkptdwlewgocqm`):** F0 e F1 aplicados em 2026-11-27, **sem o seed** (só as 8 categorias da migração). O catálogo online está vazio até F2.
+  - O histórico remoto de migrações está alinhado com os ficheiros (`20261125000000_f0_base`, `20261126000000_f1_catalogo`), por isso `supabase db push` só aplica migrações novas.
+  - Na aplicação houve uma correção de transporte (`f1_fix_unicode`): repôs os caracteres Unicode de `normalize_text` e `normalize_multiline`. O código das 23 funções, as políticas, os grants por coluna, as colunas e as categorias são iguais ao local (comparado por md5). Única diferença: o remoto dá também EXECUTE ao `service_role` nas funções `public` (predefinição do Supabase).
   - Avisos de segurança do Supabase: só os esperados (tabelas fechadas sem políticas, `admin_users` e `store_features`; funções SECURITY DEFINER que verificam `is_admin` ou só devolvem colunas públicas).
-- **Por fazer no painel do Supabase (pelo responsável):** Authentication → URL Configuration: Site URL `https://paia-dun.vercel.app` e Redirect URLs com esse endereço; decidir a confirmação de email (ver abaixo); promover o primeiro administrador.
+  - Administradores: 1 (a conta do responsável, desde 2026-11-28).
+- **Confirmação de email:** ligada no remoto (o local não a tem). O SMTP do Supabase envia poucos emails por hora; o responsável quer uma alternativa gratuita (ver a decisão em aberto).
+- **Por fazer no painel do Supabase (pelo responsável):** Authentication → URL Configuration: Site URL e Redirect URLs com o endereço do site.
 
 ## Fases
 
