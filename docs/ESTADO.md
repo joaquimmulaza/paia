@@ -2,7 +2,7 @@
 
 > **Este ficheiro é a memória comum entre agentes** (Cursor, Antigravity, Claude Code). Cada agente atualiza-o **no fim de cada tarefa, no mesmo commit da tarefa**, como descreve o [`AGENTS.md`](../AGENTS.md). Não reescrevas linhas antigas: se uma decisão mudar, acrescenta uma linha nova que a substitui.
 >
-> **Última atualização:** 2026-11-28, com `main` em `9824ed8` e F0+F1 online em https://paia-dun.vercel.app.
+> **Última atualização:** 2026-11-28, com `main` em `9824ed8` e F0+F1 online em https://paia-ugs.vercel.app.
 
 ## Agora
 
@@ -15,7 +15,7 @@
 
 ## Online (produção)
 
-- **Site:** https://paia-dun.vercel.app (Vercel, projeto `paia`, equipa `joaquim-mulazas-projects`). O endereço `paia.vercel.app` pertence a um projeto de outra conta, por isso a Vercel deu `paia-dun`.
+- **Site:** https://paia-ugs.vercel.app (Vercel, projeto `paia`, equipa `joaquim-mulazas-projects`), escolhido pelo responsável em 2026-11-28. `paia.vercel.app` pertence a um projeto de outra conta; o endereço automático `paia-dun.vercel.app` continua a funcionar.
 - **Deploy:** o repositório `joaquimmulaza/paia` está ligado à Vercel por Git (2026-11-28). Cada push para `main` faz deploy de produção; os outros branches fazem deploys de pré-visualização.
 - **Variáveis na Vercel:** `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (a chave pública anon), em production e preview. Nenhuma chave secreta.
 - **`vercel.json`:** Vite, `npm run build`, `dist`, e rewrite de todas as rotas para `index.html` (SPA).
@@ -24,7 +24,7 @@
   - Na aplicação houve uma correção de transporte (`f1_fix_unicode`): repôs os caracteres Unicode de `normalize_text` e `normalize_multiline`. O código das 23 funções, as políticas, os grants por coluna, as colunas e as categorias são iguais ao local (comparado por md5). Única diferença: o remoto dá também EXECUTE ao `service_role` nas funções `public` (predefinição do Supabase).
   - Avisos de segurança do Supabase: só os esperados (tabelas fechadas sem políticas, `admin_users` e `store_features`; funções SECURITY DEFINER que verificam `is_admin` ou só devolvem colunas públicas).
   - Administradores: 1 (a conta do responsável, desde 2026-11-28).
-- **Confirmação de email:** ligada no remoto (o local não a tem). O SMTP do Supabase envia poucos emails por hora; o responsável quer uma alternativa gratuita (ver a decisão em aberto).
+- **Confirmação de email:** ligada no remoto (o local não a tem). Decisão do responsável (2026-11-28): SMTP do Gmail (smtp.gmail.com:587, palavra-passe de aplicação, cerca de 500 emails por dia) em vez do SMTP do Supabase (2 por hora). A palavra-passe é posta pelo responsável no painel e nunca vai para ficheiros. Mais tarde, com domínio próprio: Resend ou Brevo autenticado.
 - **Por fazer no painel do Supabase (pelo responsável):** Authentication → URL Configuration: Site URL e Redirect URLs com o endereço do site.
 
 ## Fases
