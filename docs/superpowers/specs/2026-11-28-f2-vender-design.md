@@ -1,6 +1,6 @@
 # F2 · Vender: desenho
 
-> Data: 2026-11-28. Estado: **à espera da aprovação do responsável**.
+> Data: 2026-11-28. Estado: **aprovado pelo responsável em 2026-11-28**. Os limites da regra 9, da regra 10 e da regra 12 foram corrigidos depois da aprovação, para coincidirem com as constraints do F1 e com a compressão das fotos.
 > Fontes: `context.md` §4, §5 e §9; desenho técnico (`2026-11-25-paia-desenho-tecnico.md`) §6, §8, §9, §11 e §19; `docs/ESTADO.md` (pontos adiados do F2).
 > Ecrãs: canvas https://claude.ai/artifact/A7SP9jQzLiYYApzrY2Y6Sy, página «Lote 3 · Vender» (V01–V06 e as variantes V01b, V02b, V02c, V03b, V04b, V05b e V06b), «Lote 2 · Conta» (K03c) e «Lote 4 · Administração» (A01 e A01b).
 
@@ -46,6 +46,7 @@ As regras marcadas «(proposta)» são escolhas minhas. O responsável pode troc
    - Conversão: minúsculas, sem acentos (`unaccent`). Cada sequência de caracteres que não seja letra ou número vira um `-`. Os hífenes das pontas saem. No máximo 40 caracteres, cortados sem deixar hífen no fim.
    - Se o endereço já existir, acrescenta `-2`, `-3`, … ao endereço-base (que é cortado para caber nos 40).
    - Se o resultado tiver menos de 3 caracteres, por exemplo um nome feito só de símbolos, o endereço fica `loja-` mais 4 letras ao acaso.
+   - O endereço tem até 40 caracteres, mesmo com nomes até 60.
    - O endereço é recalculado quando o nome muda, enquanto a loja estiver em `draft`, `pending_approval` ou `rejected`. **Depois de aprovada, fica fixo** (proposta), para não quebrar as ligações partilhadas.
    - É gerado no servidor, dentro da mesma transação que guarda a loja. O formulário mostra uma pré-visualização calculada pelo mesmo algoritmo no cliente, mas a verdade é a do servidor.
 3. **Rascunho** (`draft`): «Guardar rascunho» guarda sem validar os campos obrigatórios. «Enviar para análise» valida tudo e passa a loja a `pending_approval`.
@@ -61,23 +62,23 @@ As regras marcadas «(proposta)» são escolhas minhas. O responsável pode troc
 
    A lista é guardada em `store_decisions.checklist`. Não bloqueia a decisão.
 9. **Campos obrigatórios para enviar:**
-   - nome: 3 a 40 caracteres, normalizado como no F1;
-   - descrição: 10 a 500 caracteres;
+   - nome: 1 a 60 caracteres, normalizado como no F1;
+   - descrição: não vazia, até 280 caracteres;
    - categoria;
    - logótipo.
 
    A capa é opcional.
 10. **Produtos:**
-    - nome: 3 a 80 caracteres;
+    - nome: 1 a 80 caracteres;
     - descrição: opcional, até 1000 caracteres;
     - categoria;
     - preço: inteiro, de 1 a 10 000 000 Kz;
-    - stock: inteiro, 0 ou mais;
+    - stock: inteiro, de 0 a 9 999;
     - fotos: 1 a 5 para publicar. A posição 0 é a principal.
 
     Só uma loja `approved` cria ou edita produtos. «Publicar na loja» corresponde a `is_published`. Com stock 0, o produto aparece como esgotado.
 11. **Apagar um produto** apaga as fotos (ficheiros e linhas). No F2 é sempre possível. No F3, um produto que já teve pedidos só se pode ocultar (proposta).
-12. **Fotos:** JPG, PNG ou WebP de origem, até 2 MB depois da compressão, validados também no bucket. SVG não é aceite.
+12. **Fotos:** JPG, PNG ou WebP de origem, até 15 MB. O telemóvel comprime-as para WebP até 2 MB, e o bucket valida o tipo e o tamanho. SVG não é aceite.
 
 ## 4. Abordagens consideradas
 

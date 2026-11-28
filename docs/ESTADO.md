@@ -7,7 +7,7 @@
 ## Agora
 
 - **Fase atual:** F2 · Vender, ainda sem desenho nem plano. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
-- **Tarefa seguinte:** o responsável aprova o desenho do F2 (`docs/superpowers/specs/2026-11-28-f2-vender-design.md`) e os ecrãs novos do canvas (V01b, V02b, V02c, V03b, V04b, V05b, V06b, K03c, A01b). Depois escreve-se o plano em `docs/superpowers/plans/2026-11-28-f2-vender.md` e cria-se o branch `f2-vender` a partir de `main`.
+- **Tarefa seguinte:** o responsável aprovou o desenho do F2 em 2026-11-28. O plano está em `docs/superpowers/plans/2026-11-28-f2-vender.md`, com 8 tarefas. Falta o responsável rever o plano e escolher a forma de execução. Depois cria-se o branch `f2-vender` a partir de `main` e começa-se pela Task 1.
 - **Trabalho a meio:** nenhum.
 - **Branches:**
   - `main` tem F0 e F1;
@@ -33,7 +33,7 @@
 | -------------------- | -------------- | ----------------------------------------------------------- |
 | F0 · Fundação        | Feita, em main | `docs/superpowers/plans/2026-11-25-f0-fundacao.md`          |
 | F1 · Catálogo        | Feita, em main | `docs/superpowers/plans/2026-11-26-f1-catalogo.md`          |
-| F2 · Vender          | Por planear    | —                                                           |
+| F2 · Vender          | Planeado       | `docs/superpowers/plans/2026-11-28-f2-vender.md`            |
 | F3 · Pedidos         | Por planear    | —                                                           |
 | F4 · Confiança       | Por planear    | —                                                           |
 | F5 · PWA e piloto    | Por planear    | —                                                           |
