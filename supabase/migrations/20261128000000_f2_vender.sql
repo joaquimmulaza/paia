@@ -642,3 +642,338 @@ end;
 $$;
 revoke execute on function public.admin_count_pending_stores() from public, anon, authenticated;
 grant execute on function public.admin_count_pending_stores() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. Produtos e fotos do vendedor: políticas e grants.
+--    * O dono escreve os produtos e as fotos da sua loja diretamente nas
+--      tabelas (sem RPC), com RLS e grants por coluna. Ler: em qualquer
+--      estado da loja (owns_store). Escrever: só com a loja approved
+--      (owns_approved_store).
+--    * As políticas do dono não dependem das RLS de stores (o dono de uma
+--      loja em draft não vê a sua loja por elas): usam os ajudantes
+--      SECURITY DEFINER abaixo, que estão em public porque authenticated não
+--      tem USAGE em private.
+--    * As políticas públicas do F1 ficam como estão; as do dono só
+--      acrescentam as linhas da própria loja, e só para authenticated.
+--    * moderation_status e moderation_reason são da administração: ficam
+--      fora dos grants de escrita (42501). store_id não se altera (nem grant
+--      nem o trigger prevent_product_store_change do F1).
+-- ---------------------------------------------------------------------------
+
+-- A conta autenticada é dona da loja p_store_id (em qualquer estado).
+create function public.owns_store(p_store_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.stores s
+     where s.id = p_store_id and s.owner_id = (select auth.uid()));
+$$;
+revoke execute on function public.owns_store(uuid) from public, anon, authenticated;
+grant execute on function public.owns_store(uuid) to authenticated;
+
+-- A conta autenticada é dona da loja p_store_id e a loja está approved.
+create function public.owns_approved_store(p_store_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.stores s
+     where s.id = p_store_id and s.owner_id = (select auth.uid()) and s.status = 'approved');
+$$;
+revoke execute on function public.owns_approved_store(uuid) from public, anon, authenticated;
+grant execute on function public.owns_approved_store(uuid) to authenticated;
+
+create policy products_select_owner on public.products
+  for select to authenticated
+  using (public.owns_store(store_id));
+
+create policy products_insert_owner on public.products
+  for insert to authenticated
+  with check (public.owns_approved_store(store_id));
+
+create policy products_update_owner on public.products
+  for update to authenticated
+  using (public.owns_approved_store(store_id))
+  with check (public.owns_approved_store(store_id));
+
+create policy products_delete_owner on public.products
+  for delete to authenticated
+  using (public.owns_approved_store(store_id));
+
+-- A subconsulta em products passa pelas RLS de products, onde o dono vê os
+-- seus produtos por products_select_owner.
+create policy product_images_select_owner on public.product_images
+  for select to authenticated
+  using (exists (
+    select 1 from public.products p
+     where p.id = product_images.product_id and public.owns_store(p.store_id)));
+
+create policy product_images_insert_owner on public.product_images
+  for insert to authenticated
+  with check (exists (
+    select 1 from public.products p
+     where p.id = product_images.product_id and public.owns_approved_store(p.store_id)));
+
+create policy product_images_update_owner on public.product_images
+  for update to authenticated
+  using (exists (
+    select 1 from public.products p
+     where p.id = product_images.product_id and public.owns_approved_store(p.store_id)))
+  with check (exists (
+    select 1 from public.products p
+     where p.id = product_images.product_id and public.owns_approved_store(p.store_id)));
+
+create policy product_images_delete_owner on public.product_images
+  for delete to authenticated
+  using (exists (
+    select 1 from public.products p
+     where p.id = product_images.product_id and public.owns_approved_store(p.store_id)));
+
+-- As colunas a mais que authenticated lê só valem nas linhas que as RLS lhe
+-- mostram: as públicas (publicadas e visíveis, sem motivo de moderação) e as
+-- da própria loja. anon continua sem elas.
+grant select (is_published, moderation_status, moderation_reason, updated_at) on public.products to authenticated;
+grant insert (store_id, category_id, name, description, price_kz, stock, is_published) on public.products to authenticated;
+grant update (category_id, name, description, price_kz, stock, is_published) on public.products to authenticated;
+grant delete on public.products to authenticated;
+grant insert (product_id, path, position) on public.product_images to authenticated;
+grant update (position) on public.product_images to authenticated;
+grant delete on public.product_images to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. Regras das fotos.
+--    * Um produto publicado tem sempre pelo menos uma foto (PHOTO_REQUIRED):
+--      não se publica sem foto e não se apaga a última foto de um publicado.
+--      Apagar o produto inteiro apaga as fotos em cascata.
+--    * O caminho de cada foto é products/<loja>/<produto>/<uuid>.webp
+--      (INVALID_PATH), o mesmo que can_write_media aceita no Storage.
+--    * As regras valem para o cliente (authenticated). Os papéis de
+--      manutenção (postgres, supabase_admin, service_role) ficam de fora: o
+--      seed e os testes do F1 têm produtos publicados sem fotos e caminhos
+--      antigos, e a administração (F4) precisa de corrigir dados. As cascatas
+--      das FKs correm como dono da tabela (postgres) e passam também.
+--    * Os triggers são SECURITY INVOKER (current_user é o papel de quem
+--      escreve) e não chamam nada em private (authenticated não tem USAGE).
+--      Como authenticated, leem pelas RLS do dono, que vê tudo o que é da sua
+--      loja.
+--    * Concorrência: publicar (UPDATE da linha do produto) e apagar uma foto
+--      (FOR NO KEY UPDATE na linha do produto) ficam em série. Quem espera
+--      volta a contar as fotos com um snapshot novo (READ COMMITTED).
+--    * set_product_image_order troca as posições numa só transação, com a
+--      unique (product_id, position) adiada até ao fim da troca.
+-- ---------------------------------------------------------------------------
+
+-- A unique de F1 passa a deferrable initially immediate (o mesmo nome, o
+-- mesmo índice): imediata como antes, adiável só por set_product_image_order.
+-- Tabela pequena; o índice é reconstruído dentro da migração.
+alter table public.product_images drop constraint product_images_product_id_position_key;
+alter table public.product_images
+  add constraint product_images_product_id_position_key unique (product_id, position) deferrable initially immediate;
+
+create function private.enforce_product_photos()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.is_published
+     and (tg_op = 'INSERT' or not old.is_published)
+     and current_user not in ('postgres', 'supabase_admin', 'service_role')
+     and not exists (select 1 from public.product_images i where i.product_id = new.id) then
+    raise exception using errcode = 'P0001', message = 'PHOTO_REQUIRED';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.enforce_product_photos() from public, anon, authenticated;
+
+create trigger enforce_product_photos
+  before insert or update of is_published on public.products
+  for each row execute function private.enforce_product_photos();
+
+create function private.keep_last_photo()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_published boolean;
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') then
+    return old;
+  end if;
+
+  -- O produto já não está visível: é uma cascata do DELETE do produto.
+  select p.is_published into v_published
+    from public.products p
+   where p.id = old.product_id
+     for no key update;
+  if not found then
+    return old;
+  end if;
+
+  if v_published and not exists (
+       select 1 from public.product_images i
+        where i.product_id = old.product_id and i.id <> old.id) then
+    raise exception using errcode = 'P0001', message = 'PHOTO_REQUIRED';
+  end if;
+  return old;
+end;
+$$;
+revoke execute on function private.keep_last_photo() from public, anon, authenticated;
+
+create trigger keep_last_photo
+  before delete on public.product_images
+  for each row execute function private.keep_last_photo();
+
+create function private.check_product_image_path()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_store_id uuid;
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') then
+    return new;
+  end if;
+
+  select p.store_id into v_store_id from public.products p where p.id = new.product_id;
+  if v_store_id is null
+     or new.path !~ ('^products/' || v_store_id::text || '/' || new.product_id::text || '/[0-9a-f-]{36}\.webp$') then
+    raise exception using errcode = 'P0001', message = 'INVALID_PATH';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.check_product_image_path() from public, anon, authenticated;
+
+create trigger check_product_image_path
+  before insert on public.product_images
+  for each row execute function private.check_product_image_path();
+
+-- Nova ordem das fotos de um produto: p_image_ids[1] fica na posição 0, e
+-- assim por diante.
+-- * Só o dono de uma loja approved (NOT_ALLOWED; um produto que não existe
+--   dá o mesmo, para não revelar ids).
+-- * p_image_ids tem de ser exatamente as imagens do produto, cada uma uma
+--   vez (INVALID_ORDER).
+-- * A linha do produto fica FOR NO KEY UPDATE: duas ordenações, ou uma
+--   ordenação e uma foto apagada, ficam em série.
+create function public.set_product_image_order(p_product_id uuid, p_image_ids uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_store_id uuid;
+begin
+  select p.store_id into v_store_id
+    from public.products p
+   where p.id = p_product_id
+     for no key update;
+  if not coalesce(public.owns_approved_store(v_store_id), false) then
+    raise exception using errcode = 'P0001', message = 'NOT_ALLOWED';
+  end if;
+
+  if p_image_ids is null
+     or array_position(p_image_ids, null) is not null
+     or cardinality(p_image_ids) <> (select count(distinct x) from unnest(p_image_ids) as x)
+     or cardinality(p_image_ids) <> (select count(*) from public.product_images i where i.product_id = p_product_id)
+     or exists (
+       select 1 from unnest(p_image_ids) as x
+        where not exists (select 1 from public.product_images i where i.id = x and i.product_id = p_product_id)) then
+    raise exception using errcode = 'P0001', message = 'INVALID_ORDER';
+  end if;
+
+  set constraints public.product_images_product_id_position_key deferred;
+  update public.product_images i
+     set position = (o.ord - 1)::smallint
+    from unnest(p_image_ids) with ordinality as o (id, ord)
+   where i.id = o.id and i.position <> (o.ord - 1)::smallint;
+  set constraints public.product_images_product_id_position_key immediate;
+end;
+$$;
+revoke execute on function public.set_product_image_order(uuid, uuid[]) from public, anon, authenticated;
+grant execute on function public.set_product_image_order(uuid, uuid[]) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 7. Storage: o dono escreve e apaga os ficheiros da sua loja.
+--    * can_write_media decide pelo caminho; nunca lança erro (cada segmento é
+--      verificado com uma expressão regular antes do cast para uuid). Um
+--      «../» ou outra extensão não casam e dão false.
+--      - store-media: stores/<loja>/(logo|cover)-<uuid>.webp, com a loja do
+--        chamador em draft, rejected ou approved (não em pending_approval nem
+--        suspended, como save_my_store);
+--      - product-media: products/<loja>/<produto>/<uuid>.webp, com a loja do
+--        chamador approved e o produto dessa loja.
+--    * Políticas para authenticated: INSERT e DELETE, e SELECT com a mesma
+--      regra, porque um DELETE com WHERE (e o da Storage API, com RETURNING)
+--      só vê as linhas que uma política de SELECT deixa ver. A leitura
+--      pública dos ficheiros vem dos buckets públicos, não desta política.
+--    * Sem UPDATE: o cliente envia com upsert false e um nome novo de cada
+--      vez. Apagar ficheiros pela administração fica para F4.
+-- ---------------------------------------------------------------------------
+create function public.can_write_media(p_bucket text, p_name text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_uuid constant text := '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+  v_parts text[];
+begin
+  if v_uid is null or p_bucket is null or p_name is null then
+    return false;
+  end if;
+
+  if p_bucket = 'store-media' then
+    v_parts := regexp_match(p_name, '^stores/(' || v_uuid || ')/(?:logo|cover)-' || v_uuid || '\.webp$');
+    if v_parts is null then
+      return false;
+    end if;
+    return exists (
+      select 1 from public.stores s
+       where s.id = v_parts[1]::uuid and s.owner_id = v_uid and s.status in ('draft', 'rejected', 'approved'));
+  end if;
+
+  if p_bucket = 'product-media' then
+    v_parts := regexp_match(p_name, '^products/(' || v_uuid || ')/(' || v_uuid || ')/' || v_uuid || '\.webp$');
+    if v_parts is null then
+      return false;
+    end if;
+    return exists (
+      select 1 from public.products p
+        join public.stores s on s.id = p.store_id
+       where s.id = v_parts[1]::uuid and p.id = v_parts[2]::uuid
+         and s.owner_id = v_uid and s.status = 'approved');
+  end if;
+
+  return false;
+end;
+$$;
+revoke execute on function public.can_write_media(text, text) from public, anon, authenticated;
+grant execute on function public.can_write_media(text, text) to authenticated;
+
+create policy media_insert_owner on storage.objects
+  for insert to authenticated
+  with check (bucket_id in ('store-media', 'product-media') and public.can_write_media(bucket_id, name));
+
+create policy media_select_owner on storage.objects
+  for select to authenticated
+  using (bucket_id in ('store-media', 'product-media') and public.can_write_media(bucket_id, name));
+
+create policy media_delete_owner on storage.objects
+  for delete to authenticated
+  using (bucket_id in ('store-media', 'product-media') and public.can_write_media(bucket_id, name));

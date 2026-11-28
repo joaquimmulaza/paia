@@ -1,6 +1,7 @@
--- Testes pgTAP de F2 · Vender, tarefas 1 e 2: a loja do vendedor no servidor
+-- Testes pgTAP de F2 · Vender, tarefas 1 a 3: a loja do vendedor no servidor
 -- (endereço gerado a partir do nome, rascunho, envio e leitura da própria
--- loja), o fecho de store_decisions ao cliente e a decisão da administração.
+-- loja), o fecho de store_decisions ao cliente, a decisão da administração e
+-- os produtos, as fotos e o Storage do vendedor.
 -- Corre com `npm run db:test` (supabase test db), só contra a base local.
 -- Tudo corre numa transação que termina em rollback: nada fica gravado.
 -- O estado é preparado como postgres; cada bloco troca de papel com
@@ -9,7 +10,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(126);
+select plan(195);
 
 -- Os testes não dependem do seed: dentro desta transação apagam-se as
 -- decisões, os destaques, as lojas, os produtos e as imagens que o seed
@@ -727,6 +728,352 @@ set local role authenticated;
 select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
 select is((select count(*)::int from public.admin_list_store_applications('pending_approval', p_limit => 100)), 50,
   '(i) p_limit 100 com 52 pendentes dá 50 linhas');
+reset role;
+
+-- ===========================================================================
+-- (j) Produtos e fotos do vendedor
+-- ===========================================================================
+-- Neste ponto: a loja de 1 está approved, a de 4 em draft, a de 5 suspended
+-- e a de 9 (o admin) em pending_approval.
+insert into t_store select owner_id, id from public.stores where owner_id = '20000000-0000-0000-0000-000000000004';
+
+-- Ids dos produtos criados como authenticated (o cliente não escolhe o id).
+create temp table t_prod (k text primary key, id uuid not null);
+grant select, insert on t_prod to authenticated, anon;
+
+create function pg_temp.pid(p_k text)
+returns uuid
+language sql
+as $$
+  select id from t_prod where k = p_k;
+$$;
+grant execute on function pg_temp.pid(text) to authenticated, anon;
+
+-- Caminho de uma foto de produto: products/<loja>/<produto>/<uuid>.webp.
+create function pg_temp.img_path(p_store uuid, p_product uuid, p_ext text default 'webp')
+returns text
+language sql
+as $$
+  select 'products/' || p_store || '/' || p_product || '/' || gen_random_uuid() || '.' || p_ext;
+$$;
+grant execute on function pg_temp.img_path(uuid, uuid, text) to authenticated;
+
+-- Número de linhas que uma instrução toca, como o papel atual.
+create function pg_temp.rows_of(p_sql text)
+returns integer
+language plpgsql
+as $$
+declare
+  v_rows integer;
+begin
+  execute p_sql;
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$$;
+grant execute on function pg_temp.rows_of(text) to authenticated, anon;
+
+-- O dono de uma loja approved cria um produto oculto.
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select lives_ok(
+  $$ with ins as (
+       insert into public.products (store_id, category_id, name, description, price_kz, stock)
+       values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('doces'), 'Bolo de chocolate', 'Fatia', 2500, 3)
+       returning id)
+     insert into t_prod select 'bolo', id from ins $$,
+  '(j) o dono de uma loja approved cria um produto oculto');
+select is((select is_published from public.products where id = pg_temp.pid('bolo')), false,
+  '(j) o dono vê o seu produto oculto e o is_published');
+select throws_ok(
+  $$ insert into public.products (store_id, category_id, name, price_kz, stock, is_published)
+     values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('doces'), 'Já publicado', 100, 1, true) $$,
+  'P0001', 'PHOTO_REQUIRED', '(j) criar um produto já publicado (sem fotos) dá PHOTO_REQUIRED');
+select throws_ok(
+  $$ update public.products set is_published = true where id = pg_temp.pid('bolo') $$,
+  'P0001', 'PHOTO_REQUIRED', '(j) publicar sem foto dá PHOTO_REQUIRED');
+
+-- Caminhos das fotos.
+select throws_ok(
+  format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 0) $$,
+         pg_temp.pid('bolo'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000002'), pg_temp.pid('bolo'))),
+  'P0001', 'INVALID_PATH', '(j) uma foto no caminho de outra loja dá INVALID_PATH');
+select throws_ok(
+  format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 0) $$,
+         pg_temp.pid('bolo'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'), 'png')),
+  'P0001', 'INVALID_PATH', '(j) uma foto .png dá INVALID_PATH');
+select throws_ok(
+  format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 0) $$,
+         pg_temp.pid('bolo'), 'products/' || pg_temp.sid('20000000-0000-0000-0000-000000000001') || '/' || gen_random_uuid() || '/' || gen_random_uuid() || '.webp'),
+  'P0001', 'INVALID_PATH', '(j) uma foto na pasta de outro produto dá INVALID_PATH');
+
+-- Foto 0 e publicar.
+select lives_ok(
+  format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 0) $$,
+         pg_temp.pid('bolo'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'))),
+  '(j) o dono junta a foto 0 no caminho certo');
+select lives_ok($$ update public.products set is_published = true where id = pg_temp.pid('bolo') $$,
+  '(j) com uma foto, o dono publica');
+select throws_ok(
+  format($$ delete from public.product_images where product_id = %L $$, pg_temp.pid('bolo')),
+  'P0001', 'PHOTO_REQUIRED', '(j) apagar a única foto de um produto publicado dá PHOTO_REQUIRED');
+select throws_ok(
+  $$ update public.products set moderation_status = 'hidden', moderation_reason = 'Eu mesmo' where id = pg_temp.pid('bolo') $$,
+  '42501', null, '(j) o dono não muda moderation_status');
+
+-- Com duas fotos, apagar uma é aceite.
+select lives_ok(
+  format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 1) $$,
+         pg_temp.pid('bolo'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'))),
+  '(j) o dono junta a foto 1');
+select is(
+  pg_temp.rows_of(format($$ delete from public.product_images where product_id = %L and position = 1 $$, pg_temp.pid('bolo'))),
+  1, '(j) com duas fotos, apagar uma é aceite');
+reset role;
+
+select is((select is_published from public.products where id = pg_temp.pid('bolo')), true, '(j) o produto ficou publicado');
+select is((select count(*)::int from public.product_images where product_id = pg_temp.pid('bolo')), 1,
+  '(j) a foto recusada continua lá');
+
+-- Apagar um produto publicado com uma foto apaga a foto.
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+with ins as (
+  insert into public.products (store_id, category_id, name, price_kz, stock)
+  values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('doces'), 'Para apagar', 100, 1)
+  returning id)
+insert into t_prod select 'apagar', id from ins;
+select pg_temp.rows_of(format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 0) $$,
+       pg_temp.pid('apagar'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('apagar'))));
+update public.products set is_published = true where id = pg_temp.pid('apagar');
+select is(pg_temp.rows_of(format($$ delete from public.products where id = %L $$, pg_temp.pid('apagar'))), 1,
+  '(j) o dono apaga um produto publicado com uma foto');
+reset role;
+select is((select count(*)::int from public.product_images where product_id = pg_temp.pid('apagar')), 0,
+  '(j) apagar o produto apaga as fotos');
+
+-- Um produto oculto, para os testes de outro utilizador.
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+with ins as (
+  insert into public.products (store_id, category_id, name, price_kz, stock)
+  values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('doces'), 'Oculto', 100, 1)
+  returning id)
+insert into t_prod select 'oculto', id from ins;
+
+-- O dono de uma loja em draft não cria produtos.
+select pg_temp.as_user('20000000-0000-0000-0000-000000000004');
+select throws_ok(
+  $$ insert into public.products (store_id, category_id, name, price_kz, stock)
+     values (pg_temp.sid('20000000-0000-0000-0000-000000000004'), pg_temp.cat('outros'), 'Cedo demais', 100, 1) $$,
+  '42501', null, '(j) o dono de uma loja em draft não cria produtos');
+
+-- Outro utilizador (com a sua própria loja aprovada).
+select pg_temp.as_user('20000000-0000-0000-0000-000000000002');
+select is((select count(*)::int from public.products where id = pg_temp.pid('oculto')), 0,
+  '(j) outro utilizador não vê o produto oculto');
+select is((select count(*)::int from public.products where id = pg_temp.pid('bolo')), 1,
+  '(j) outro utilizador vê o produto publicado');
+select is(pg_temp.rows_of(format($$ update public.products set name = 'Meu' where id = %L $$, pg_temp.pid('bolo'))), 0,
+  '(j) outro utilizador não altera o produto');
+select is(pg_temp.rows_of(format($$ update public.products set is_published = false where id = %L $$, pg_temp.pid('oculto'))), 0,
+  '(j) outro utilizador não altera o produto oculto');
+select is(pg_temp.rows_of(format($$ delete from public.products where id = %L $$, pg_temp.pid('bolo'))), 0,
+  '(j) outro utilizador não apaga o produto');
+select is(pg_temp.rows_of(format($$ delete from public.product_images where product_id = %L $$, pg_temp.pid('bolo'))), 0,
+  '(j) outro utilizador não apaga as fotos');
+select throws_ok(
+  $$ insert into public.products (store_id, category_id, name, price_kz, stock)
+     values (pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.cat('doces'), 'Intruso', 100, 1) $$,
+  '42501', null, '(j) outro utilizador não cria produtos na loja alheia');
+select throws_ok(
+  format($$ insert into public.product_images (product_id, path, position) values (%L, %L, 2) $$,
+         pg_temp.pid('bolo'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'))),
+  '42501', null, '(j) outro utilizador não junta fotos ao produto alheio');
+reset role;
+
+select is((select name from public.products where id = pg_temp.pid('bolo')), 'Bolo de chocolate',
+  '(j) o produto ficou como estava');
+
+-- O público não vê o produto oculto.
+set local role anon;
+select is((select count(*)::int from public.products where id = pg_temp.pid('oculto')), 0, '(j) anon não vê o produto oculto');
+select is((select count(*)::int from public.products where id = pg_temp.pid('bolo')), 1, '(j) anon vê o produto publicado');
+reset role;
+
+-- Loja suspensa: o dono vê os seus produtos mas não os altera.
+insert into public.products (store_id, category_id, name, price_kz, stock)
+values (pg_temp.sid('20000000-0000-0000-0000-000000000005'), pg_temp.cat('gelados'), 'Gelado', 300, 2);
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000005');
+select is((select count(*)::int from public.products where store_id = pg_temp.sid('20000000-0000-0000-0000-000000000005')), 1,
+  '(j) o dono de uma loja suspensa vê os seus produtos');
+select is(pg_temp.rows_of(format($$ update public.products set name = 'Outro' where store_id = %L $$,
+                                 pg_temp.sid('20000000-0000-0000-0000-000000000005'))), 0,
+  '(j) o dono de uma loja suspensa não altera os produtos');
+reset role;
+
+-- ===========================================================================
+-- (k) Ordem das fotos
+-- ===========================================================================
+create temp table t_img as
+  select position, id from public.product_images where product_id = pg_temp.pid('bolo');
+insert into public.product_images (product_id, path, position)
+values (pg_temp.pid('bolo'), pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo')), 1);
+insert into t_img select position, id from public.product_images where product_id = pg_temp.pid('bolo') and position = 1;
+grant select on t_img to authenticated;
+
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select lives_ok(
+  $$ select public.set_product_image_order(pg_temp.pid('bolo'),
+       array[(select id from t_img where position = 1), (select id from t_img where position = 0)]) $$,
+  '(k) set_product_image_order troca as fotos 0 e 1');
+select results_eq(
+  format($$ select id from public.product_images where product_id = %L order by position $$, pg_temp.pid('bolo')),
+  $$ select unnest(array[(select id from t_img where position = 1), (select id from t_img where position = 0)]) $$,
+  '(k) as posições ficam trocadas');
+select throws_ok(
+  $$ select public.set_product_image_order(pg_temp.pid('bolo'), array[(select id from t_img where position = 1)]) $$,
+  'P0001', 'INVALID_ORDER', '(k) com um id em falta dá INVALID_ORDER');
+select throws_ok(
+  $$ select public.set_product_image_order(pg_temp.pid('bolo'),
+       array[(select id from t_img where position = 1), (select id from t_img where position = 1)]) $$,
+  'P0001', 'INVALID_ORDER', '(k) com um id repetido dá INVALID_ORDER');
+select throws_ok(
+  $$ select public.set_product_image_order(pg_temp.pid('bolo'),
+       array[(select id from t_img where position = 1), gen_random_uuid()]) $$,
+  'P0001', 'INVALID_ORDER', '(k) com um id que não é do produto dá INVALID_ORDER');
+select throws_ok(
+  $$ select public.set_product_image_order(pg_temp.pid('bolo'), null) $$,
+  'P0001', 'INVALID_ORDER', '(k) sem lista dá INVALID_ORDER');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000002');
+select throws_ok(
+  $$ select public.set_product_image_order(pg_temp.pid('bolo'),
+       array[(select id from t_img where position = 0), (select id from t_img where position = 1)]) $$,
+  'P0001', 'NOT_ALLOWED', '(k) outro utilizador não ordena as fotos');
+reset role;
+select ok(
+  (select condeferrable and not condeferred from pg_constraint
+    where conname = 'product_images_product_id_position_key' and conrelid = 'public.product_images'::regclass),
+  '(k) unique (product_id, position) é deferrable initially immediate');
+
+set local role anon;
+select throws_ok($$ select public.set_product_image_order(gen_random_uuid(), '{}') $$, '42501', null,
+  '(k) anon não chama set_product_image_order');
+reset role;
+
+-- ===========================================================================
+-- (l) Storage: can_write_media e as políticas de storage.objects
+-- ===========================================================================
+create function pg_temp.store_media(p_store uuid, p_kind text)
+returns text
+language sql
+as $$
+  select 'stores/' || p_store || '/' || p_kind || '-' || gen_random_uuid() || '.webp';
+$$;
+grant execute on function pg_temp.store_media(uuid, text) to authenticated;
+
+insert into public.products (store_id, category_id, name, price_kz, stock)
+values (pg_temp.sid('20000000-0000-0000-0000-000000000002'), pg_temp.cat('salgados'), 'Do vizinho', 300, 2);
+insert into t_prod select 'vizinho', id from public.products where name = 'Do vizinho';
+
+set local role authenticated;
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select ok(public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'logo')),
+  '(l) store-media: o logótipo da própria loja é true');
+select ok(public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'cover')),
+  '(l) store-media: a capa da própria loja é true');
+select ok(not public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000002'), 'logo')),
+  '(l) store-media: o caminho de outra loja é false');
+select ok(not public.can_write_media('store-media',
+    'stores/' || pg_temp.sid('20000000-0000-0000-0000-000000000001') || '/../' || pg_temp.sid('20000000-0000-0000-0000-000000000002')
+      || '/logo-' || gen_random_uuid() || '.webp'),
+  '(l) store-media: um caminho com «../» é false');
+select ok(not public.can_write_media('store-media',
+    'stores/' || pg_temp.sid('20000000-0000-0000-0000-000000000001') || '/logo-' || gen_random_uuid() || '.png'),
+  '(l) store-media: a extensão .png é false');
+select ok(not public.can_write_media('store-media',
+    'stores/' || pg_temp.sid('20000000-0000-0000-0000-000000000001') || '/banner-' || gen_random_uuid() || '.webp'),
+  '(l) store-media: um nome que não é logo nem cover é false');
+select ok(not public.can_write_media('product-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'logo')),
+  '(l) um caminho de loja no bucket product-media é false');
+
+select ok(public.can_write_media('product-media', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'))),
+  '(l) product-media: a foto do próprio produto é true');
+select ok(not public.can_write_media('product-media', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'), 'png')),
+  '(l) product-media: a extensão .png é false');
+select ok(not public.can_write_media('product-media', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000002'), pg_temp.pid('vizinho'))),
+  '(l) product-media: o produto de outra loja é false');
+select ok(not public.can_write_media('product-media', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('vizinho'))),
+  '(l) product-media: o produto de outra loja debaixo da própria loja é false');
+select ok(not public.can_write_media('product-media',
+    'products/' || pg_temp.sid('20000000-0000-0000-0000-000000000001') || '/' || pg_temp.pid('bolo') || '/../../'
+      || pg_temp.sid('20000000-0000-0000-0000-000000000002') || '/' || gen_random_uuid() || '.webp'),
+  '(l) product-media: um caminho com «../» é false');
+select ok(not public.can_write_media('store-media', 'stores/nao-e-uuid/logo-x.webp'),
+  '(l) um segmento que não é uuid é false, sem erro');
+select ok(not public.can_write_media('product-media', 'products/zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz/a/b.webp'),
+  '(l) um uuid malformado é false, sem erro');
+select ok(not public.can_write_media('outro-bucket', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'logo')),
+  '(l) outro bucket é false');
+select ok(not coalesce(public.can_write_media(null, null), false), '(l) nulos dão false');
+
+-- store-media com a loja em pending_approval (a do admin) e em suspended (a de 5).
+select pg_temp.as_user('20000000-0000-0000-0000-000000000009');
+select ok(not public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000009'), 'logo')),
+  '(l) store-media com a loja em pending_approval é false');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000005');
+select ok(not public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000005'), 'logo')),
+  '(l) store-media com a loja suspended é false');
+-- Em draft pode (o logótipo vem antes do envio); produtos ainda não.
+select pg_temp.as_user('20000000-0000-0000-0000-000000000004');
+select ok(public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000004'), 'logo')),
+  '(l) store-media com a loja em draft é true');
+select ok(not public.can_write_media('product-media', pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000004'), gen_random_uuid())),
+  '(l) product-media com a loja em draft é false');
+select set_config('request.jwt.claims', '{"role": "authenticated"}', true);
+select ok(not public.can_write_media('store-media', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'logo')),
+  '(l) sem sub no JWT é false');
+
+-- As políticas em storage.objects: o dono escreve e apaga, outro não.
+create temp table t_obj (k text primary key, name text not null);
+grant select, insert on t_obj to authenticated;
+insert into t_obj values ('logo1', pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'logo'));
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select lives_ok($$ insert into storage.objects (bucket_id, name) values ('store-media', (select name from t_obj where k = 'logo1')) $$,
+  '(l) o dono escreve o logótipo da sua loja em storage.objects');
+select lives_ok(
+  format($$ insert into storage.objects (bucket_id, name) values ('product-media', %L) $$,
+         pg_temp.img_path(pg_temp.sid('20000000-0000-0000-0000-000000000001'), pg_temp.pid('bolo'))),
+  '(l) o dono escreve a foto do seu produto em storage.objects');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000002');
+select throws_ok(
+  format($$ insert into storage.objects (bucket_id, name) values ('store-media', %L) $$,
+         pg_temp.store_media(pg_temp.sid('20000000-0000-0000-0000-000000000001'), 'cover')),
+  '42501', null, '(l) outro utilizador não escreve no caminho da loja alheia');
+select throws_ok(
+  format($$ insert into storage.objects (bucket_id, name) values ('product-media', %L) $$,
+         'products/' || pg_temp.sid('20000000-0000-0000-0000-000000000002') || '/' || pg_temp.pid('vizinho') || '/../../'
+           || pg_temp.sid('20000000-0000-0000-0000-000000000001') || '/' || gen_random_uuid() || '.webp'),
+  '42501', null, '(l) um nome de objeto com «../» é recusado');
+select set_config('storage.allow_delete_query', 'true', true);
+select is(pg_temp.rows_of($$ delete from storage.objects where bucket_id = 'store-media' and name = (select name from t_obj where k = 'logo1') $$),
+  0, '(l) outro utilizador não apaga o logótipo alheio');
+select pg_temp.as_user('20000000-0000-0000-0000-000000000001');
+select is(pg_temp.rows_of($$ delete from storage.objects where bucket_id = 'store-media' and name = (select name from t_obj where k = 'logo1') $$),
+  1, '(l) o dono apaga o logótipo da sua loja');
+reset role;
+
+select results_eq(
+  $$ select policyname::text collate "default", cmd::text collate "default", roles::text collate "default" from pg_policies
+      where schemaname = 'storage' and tablename = 'objects' and policyname like 'media\_%' order by policyname $$,
+  $$ values ('media_delete_owner', 'DELETE', '{authenticated}'), ('media_insert_owner', 'INSERT', '{authenticated}'),
+            ('media_select_owner', 'SELECT', '{authenticated}') $$,
+  '(l) storage.objects tem as políticas do dono, só para authenticated, sem UPDATE');
+
+set local role anon;
+select throws_ok($$ select public.can_write_media('store-media', 'x') $$, '42501', null, '(l) anon não chama can_write_media');
 reset role;
 
 select * from finish();

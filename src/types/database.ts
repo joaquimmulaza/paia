@@ -279,6 +279,9 @@ isOneToOne: true
 "admin_set_store_feature_active":
 { Args: { "p_active": boolean,"p_id": string }; Returns: undefined
                            },
+"can_write_media":
+{ Args: { "p_bucket": string,"p_name": string }; Returns: boolean
+                           },
 "get_my_profile":
 { Args: Record<PropertyKey, never>; Returns: {
               "affiliation": Database["public"]['Enums']["affiliation"],"class_group": string,"course": string,"curricular_year": string,"full_name": string,"is_admin": boolean,"phone": string,"shift": string
@@ -314,6 +317,12 @@ isOneToOne: true
               "category_name": string,"category_slug": string,"description": string,"id": string,"logo_path": string,"name": string,"published_products_count": number,"rating_avg": number,"rating_count": number,"slug": string
             }[]
                            },
+"owns_approved_store":
+{ Args: { "p_store_id": string }; Returns: boolean
+                           },
+"owns_store":
+{ Args: { "p_store_id": string }; Returns: boolean
+                           },
 "save_my_store":
 { Args: { "p_category_id": string,"p_cover_path": string,"p_description": string,"p_logo_path": string,"p_name": string }; Returns: string
                            },
@@ -324,6 +333,9 @@ isOneToOne: true
 { Args: { "p_after_created_at"?: string,"p_after_id"?: string,"p_after_price"?: number,"p_category_slug"?: string,"p_limit"?: number,"p_q"?: string,"p_sort"?: string,"p_store_slug"?: string }; Returns: {
               "category_slug": string,"created_at": string,"id": string,"main_image_path": string,"name": string,"price_kz": number,"stock": number,"store_name": string,"store_slug": string
             }[]
+                           },
+"set_product_image_order":
+{ Args: { "p_image_ids": (string)[],"p_product_id": string }; Returns: undefined
                            },
 "submit_my_store":
 { Args: Record<PropertyKey, never>; Returns: Database["public"]['Enums']["store_status"]

@@ -261,9 +261,11 @@ set local role authenticated;
 select is(
   (select count(*)::int from public.stores where id = 'b0000000-0000-0000-0000-000000000001'),
   1, 'authenticated lê a loja aprovada');
+-- Desde o F2 (products_select_owner), a dona vê o seu produto não
+-- publicado; o público continua sem o ver (testes de anon acima).
 select is(
   (select count(*)::int from public.products where id = 'c0000000-0000-0000-0000-000000000002'),
-  0, 'a dona não lê o seu produto não publicado pela leitura pública');
+  1, 'desde o F2, a dona lê o seu produto não publicado');
 
 select throws_ok($$ select owner_id from public.stores $$, '42501', null, '(c) authenticated não lê stores.owner_id');
 select throws_ok($$ select decided_by from public.stores $$, '42501', null, '(c) authenticated não lê stores.decided_by');
@@ -274,9 +276,11 @@ select throws_ok($$ select id from public.stores where status = 'pending_approva
   '(c) authenticated não filtra stores por status');
 select throws_ok($$ select id from public.stores order by owner_id $$, '42501', null,
   '(c) authenticated não ordena stores por owner_id');
-select throws_ok($$ select is_published from public.products $$, '42501', null, '(c) authenticated não lê products.is_published');
-select throws_ok($$ select moderation_status from public.products $$, '42501', null, '(c) authenticated não lê products.moderation_status');
-select throws_ok($$ select moderation_reason from public.products $$, '42501', null, '(c) authenticated não lê products.moderation_reason');
+-- Desde o F2, authenticated lê estas colunas, mas só nas linhas que as RLS
+-- lhe mostram (as públicas e as da sua loja).
+select lives_ok($$ select is_published from public.products $$, 'desde o F2, authenticated lê products.is_published');
+select lives_ok($$ select moderation_status from public.products $$, 'desde o F2, authenticated lê products.moderation_status');
+select lives_ok($$ select moderation_reason from public.products $$, 'desde o F2, authenticated lê products.moderation_reason');
 select throws_ok(
   $$ select p.full_name from public.stores s join public.profiles p on p.id = s.owner_id $$,
   '42501', null, 'authenticated não junta stores a profiles por owner_id');
@@ -291,26 +295,28 @@ select throws_ok(
 select throws_ok(
   $$ delete from public.stores where id = 'b0000000-0000-0000-0000-000000000001' $$,
   '42501', null, '(f) a dona não apaga stores');
+-- Desde o F2, a dona de uma loja aprovada escreve os seus produtos e fotos
+-- (testes em f2_seller_test.sql). Aqui fica o que continua fechado.
 select throws_ok(
   $$ insert into public.products (store_id, category_id, name, price_kz, stock)
-     values ('b0000000-0000-0000-0000-000000000001', pg_temp.cat('doces'), 'Novo', 100, 1) $$,
-  '42501', null, '(f) a dona não insere em products');
+     values ('b0000000-0000-0000-0000-000000000004', pg_temp.cat('doces'), 'Novo', 100, 1) $$,
+  '42501', null, '(f) a dona não insere products noutra loja');
 select throws_ok(
-  $$ update public.products set price_kz = 1 where id = 'c0000000-0000-0000-0000-000000000001' $$,
-  '42501', null, '(f) a dona não altera products');
+  $$ update public.products set moderation_status = 'visible' where id = 'c0000000-0000-0000-0000-000000000001' $$,
+  '42501', null, '(f) a dona não altera products.moderation_status');
 select throws_ok(
-  $$ delete from public.products where id = 'c0000000-0000-0000-0000-000000000001' $$,
-  '42501', null, '(f) a dona não apaga products');
+  $$ update public.products set store_id = 'b0000000-0000-0000-0000-000000000004' where id = 'c0000000-0000-0000-0000-000000000001' $$,
+  '42501', null, '(f) a dona não altera products.store_id');
 select throws_ok(
   $$ insert into public.product_images (product_id, path, position)
      values ('c0000000-0000-0000-0000-000000000001', 'x.webp', 1) $$,
-  '42501', null, '(f) a dona não insere em product_images');
+  'P0001', 'INVALID_PATH', '(f) desde o F2, uma foto fora de products/<loja>/<produto>/ dá INVALID_PATH');
 select throws_ok(
   $$ update public.product_images set path = 'y.webp' where id = 'd0000000-0000-0000-0000-000000000001' $$,
   '42501', null, '(f) a dona não altera product_images');
 select throws_ok(
   $$ delete from public.product_images where id = 'd0000000-0000-0000-0000-000000000001' $$,
-  '42501', null, '(f) a dona não apaga product_images');
+  'P0001', 'PHOTO_REQUIRED', '(f) desde o F2, a dona não apaga a única foto de um produto publicado');
 
 reset role;
 select set_config('request.jwt.claims', '', true);
@@ -555,20 +561,40 @@ select results_eq(
               ('product_images', 'id'), ('product_images', 'product_id'), ('product_images', 'path'),
               ('product_images', 'position')
             ) v(t, c)
+     union all
+     -- Desde o F2: o que o dono lê e escreve nos seus produtos e fotos (as
+     -- RLS limitam as linhas). anon continua só com as colunas públicas.
+     select 'authenticated', v.t, v.c, v.p
+       from (values
+              ('products', 'is_published', 'SELECT'), ('products', 'moderation_status', 'SELECT'),
+              ('products', 'moderation_reason', 'SELECT'), ('products', 'updated_at', 'SELECT'),
+              ('products', 'store_id', 'INSERT'), ('products', 'category_id', 'INSERT'), ('products', 'name', 'INSERT'),
+              ('products', 'description', 'INSERT'), ('products', 'price_kz', 'INSERT'), ('products', 'stock', 'INSERT'),
+              ('products', 'is_published', 'INSERT'),
+              ('products', 'category_id', 'UPDATE'), ('products', 'name', 'UPDATE'), ('products', 'description', 'UPDATE'),
+              ('products', 'price_kz', 'UPDATE'), ('products', 'stock', 'UPDATE'), ('products', 'is_published', 'UPDATE'),
+              ('product_images', 'product_id', 'INSERT'), ('product_images', 'path', 'INSERT'),
+              ('product_images', 'position', 'INSERT'), ('product_images', 'position', 'UPDATE')
+            ) v(t, c, p)
       order by 1, 2, 3, 4 $$,
-  'anon e authenticated têm exatamente as colunas públicas, só com SELECT');
+  'anon tem exatamente as colunas públicas, só com SELECT; authenticated também as do dono (F2)');
 
 select ok(
   (select bool_and(has_table_privilege('service_role', t, p))
      from unnest(array['public.categories', 'public.stores', 'public.products', 'public.product_images']) t,
           unnest(array['select', 'insert', 'update', 'delete']) p),
   'service_role tem select, insert, update e delete nas quatro tabelas');
-select ok(
-  not (select bool_or(has_table_privilege(r, t, p))
-         from unnest(array['anon', 'authenticated']) r,
-              unnest(array['public.categories', 'public.stores', 'public.products', 'public.product_images']) t,
-              unnest(array['select', 'insert', 'update', 'delete', 'truncate']) p),
-  'anon e authenticated não têm nenhum privilégio de tabela inteira nas quatro tabelas');
+-- Desde o F2, o único privilégio de tabela inteira é o DELETE de
+-- authenticated em products e product_images (as RLS limitam ao dono).
+select results_eq(
+  $$ select r, t, p
+       from unnest(array['anon', 'authenticated']) r,
+            unnest(array['public.categories', 'public.stores', 'public.products', 'public.product_images']) t,
+            unnest(array['select', 'insert', 'update', 'delete', 'truncate']) p
+      where has_table_privilege(r, t, p)
+      order by 1, 2, 3 $$,
+  $$ values ('authenticated', 'public.product_images', 'delete'), ('authenticated', 'public.products', 'delete') $$,
+  'anon e authenticated não têm privilégios de tabela inteira, além do DELETE do dono (F2)');
 
 -- ===========================================================================
 -- (k) Funções públicas do catálogo: pesquisa, detalhe e lojas
@@ -818,9 +844,10 @@ select results_eq(
   $$ values ('product-media'::text, 'product-media'::text, true, 2097152::bigint, '{image/jpeg,image/png,image/webp}'::text[]),
             ('store-media'::text, 'store-media'::text, true, 2097152::bigint, '{image/jpeg,image/png,image/webp}'::text[]) $$,
   '(l) os buckets store-media e product-media existem, públicos, com 2 MB e só jpeg, png e webp');
-select is(
-  (select count(*)::int from pg_policies where schemaname = 'storage' and tablename = 'objects'),
-  0, '(l) não há políticas em storage.objects (a escrita do dono fica para F2)');
+select results_eq(
+  $$ select policyname::text collate "default" from pg_policies where schemaname = 'storage' and tablename = 'objects' order by 1 $$,
+  $$ values ('media_delete_owner'), ('media_insert_owner'), ('media_select_owner') $$,
+  '(l) em storage.objects só há as políticas do dono do F2');
 
 -- ===========================================================================
 -- (m) Destaques de lojas (store_features), geridos pela administração
