@@ -6,13 +6,14 @@
 
 ## Agora
 
-- **Fase atual:** F2 · Vender, **em revisão** no branch `f2-vender`: as 8 tarefas estão feitas (ver abaixo). Falta a revisão final do branch (`code-review` nível `high` e `security-review`), uma vaga de correções e a decisão do responsável sobre o merge. Desenho aprovado (`docs/superpowers/specs/2026-11-28-f2-vender-design.md`) e plano escrito. O âmbito está no spec, secção 19: candidatura, decisão do admin, painel, produtos e envio de imagens (ecrãs V01–V06, A01, C06).
-- **Tarefa seguinte:** revisão final do branch `f2-vender` contra `main`, uma vaga de correções e `npm run verify`. Depois, e só com autorização explícita do responsável, o merge em `main` e a aplicação da migração `20261128000000_f2_vender.sql` no Supabase remoto (**o remoto ainda não a recebeu**; está em F0+F1). O plano está em `docs/superpowers/plans/2026-11-28-f2-vender.md`.
+- **Fase atual:** F3 · Pedidos, **desenho aprovado** pelo responsável em 2026-11-28 (`docs/superpowers/specs/2026-11-28-f3-pedidos-design.md`). O F2 está feito, em `main` e online.
+- **Tarefa seguinte:** escrever o plano do F3 em `docs/superpowers/plans/` (skill `superpowers:writing-plans`). A primeira tarefa do plano é desenhar no canvas as peças em falta (secção 6 do desenho) e pedir a aprovação do responsável antes de as construir.
 - **Trabalho a meio:** nenhum.
 - **Branches:**
-  - `main` tem F0 e F1;
-  - `f2-vender` tem o F2 completo, em revisão, sem push nem merge;
-  - `f0-fundacao` e `f1-catalogo` estão já juntos em `main` e não se escreve mais neles.
+  - `main` tem F0, F1 e F2;
+  - `claude/serene-cannon-ahzxid` tem a correção do «Quero vender» e o desenho do F3;
+  - `f0-fundacao`, `f1-catalogo` e `f2-vender` estão já juntos em `main` e não se escreve mais neles.
+- **Autorizações do responsável para o F3 (2026-11-28):** `pg_cron` para a conclusão automática, também no remoto; rotas do vendedor em `/vender/pedidos`. O responsável acrescentou `https://paia-ugs.vercel.app/recuperar` às Redirect URLs do Supabase remoto.
 
 ## Online (produção)
 
@@ -35,7 +36,7 @@
 | F0 · Fundação        | Feita, em main | `docs/superpowers/plans/2026-11-25-f0-fundacao.md`          |
 | F1 · Catálogo        | Feita, em main | `docs/superpowers/plans/2026-11-26-f1-catalogo.md`          |
 | F2 · Vender          | Feita, em main e online | `docs/superpowers/plans/2026-11-28-f2-vender.md`            |
-| F3 · Pedidos         | Por planear    | —                                                           |
+| F3 · Pedidos         | Desenho aprovado; plano por escrever | `docs/superpowers/specs/2026-11-28-f3-pedidos-design.md` |
 | F4 · Confiança       | Por planear    | —                                                           |
 | F5 · PWA e piloto    | Por planear    | —                                                           |
 
