@@ -123,6 +123,11 @@ describe('ProductFormPage, novo produto (V06)', () => {
       'true',
     );
     expect(screen.getByRole('button', { name: 'Publicar produto' })).toBeVisible();
+    expect(
+      screen.getByText(
+        'Vendes produtos já prontos. Não há tempo de preparação: quem pede espera receber no dia combinado.',
+      ),
+    ).toBeVisible();
     expect(screen.getByRole('link', { name: 'Voltar aos produtos' })).toHaveAttribute(
       'href',
       '/vender/produtos',
@@ -266,6 +271,11 @@ describe('ProductFormPage, editar produto (V06b)', () => {
     expect(await screen.findByLabelText('Nome')).toHaveValue('Pudim (fatia)');
     expect(screen.getByRole('heading', { level: 1, name: 'Editar produto' })).toBeVisible();
     expect(sellerApi.getMyProduct).toHaveBeenCalledWith('s1', 'p1');
+    expect(
+      screen.getByText(
+        'Vendes produtos já prontos. Não há tempo de preparação: quem pede espera receber no dia combinado.',
+      ),
+    ).toBeVisible();
     expect(screen.getByLabelText('Preço (Kz)')).toHaveValue('900');
     expect(screen.getByRole('button', { name: 'Foto 1, principal' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Foto 2' })).toBeVisible();

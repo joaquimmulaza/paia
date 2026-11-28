@@ -97,6 +97,11 @@ describe('ProductsPage (V05, V05b)', () => {
     const moderated = screen.getByRole('link', { name: /Capa de telemóvel/ });
     expect(within(moderated).getByText('Ocultado')).toBeVisible();
     expect(moderated).toHaveTextContent('Ocultado pela equipa: imagem com dados pessoais');
+    expect(
+      screen.getByText(
+        'Oculto: só tu vês. Esgotado: aparece na loja, mas ninguém o pode pedir até repores o stock.',
+      ),
+    ).toBeVisible();
     expect(screen.getByRole('link', { name: 'Novo' })).toHaveAttribute(
       'href',
       '/vender/produtos/novo',

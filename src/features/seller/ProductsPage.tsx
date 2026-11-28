@@ -177,6 +177,10 @@ function ProductList({ storeId }: { storeId: string }) {
           Carregar mais
         </Button>
       )}
+
+      <p className="m-0 font-body text-small font-medium text-ink-muted">
+        Oculto: só tu vês. Esgotado: aparece na loja, mas ninguém o pode pedir até repores o stock.
+      </p>
     </>
   );
 }

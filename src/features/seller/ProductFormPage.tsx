@@ -422,6 +422,11 @@ function ProductForm({ store, product, reload }: ProductFormProps) {
         />
       </div>
 
+      <p className="m-0 font-body text-small font-medium text-ink-muted">
+        Vendes produtos já prontos. Não há tempo de preparação: quem pede espera receber no dia
+        combinado.
+      </p>
+
       <div className="flex flex-col gap-3.5">
         <Button
           type="submit"
