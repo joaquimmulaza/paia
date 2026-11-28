@@ -25,7 +25,7 @@
   - Avisos de segurança do Supabase: só os esperados (tabelas fechadas sem políticas, `admin_users` e `store_features`; funções SECURITY DEFINER que verificam `is_admin` ou só devolvem colunas públicas).
   - Administradores: 1 (a conta do responsável, desde 2026-11-28).
 - **Confirmação de email:** ligada no remoto (o local não a tem). Decisão do responsável (2026-11-28): SMTP do Gmail (smtp.gmail.com:587, palavra-passe de aplicação, cerca de 500 emails por dia) em vez do SMTP do Supabase (2 por hora). A palavra-passe é posta pelo responsável no painel e nunca vai para ficheiros. Mais tarde, com domínio próprio: Resend ou Brevo autenticado.
-- **Por fazer no painel do Supabase (pelo responsável):** Authentication → URL Configuration: Site URL e Redirect URLs com o endereço do site.
+- **Painel do Supabase (2026-11-28):** SMTP do Gmail do PAIÁ ligado pelo responsável; Site URL e Redirect URLs em `https://paia-ugs.vercel.app`. Testado: o email de recuperação chegou e a ligação abre o `paia-ugs`.
 
 ## Fases
 
